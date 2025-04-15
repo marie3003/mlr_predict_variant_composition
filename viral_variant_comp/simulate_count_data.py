@@ -1,5 +1,5 @@
 import numpy as np
-
+import pandas as pd
 
 
 def set_parameters(n_variants, delta_gr_range, rate, freq_entering_variants, s_0 = 0, o_0 = 0):
@@ -67,3 +67,28 @@ def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_ent
     o_vec = o_vec[:n_variants]
 
     return {"growth_rates": s_vec, "log_init_freq": o_vec, "freq": frequencies, "counts": counts, "n_variants": n_variants}
+
+def convert_count_data_to_df(counts):
+    # Convert to DataFrame with column names as variants
+    counts_df = pd.DataFrame(counts, columns=[f"variant_{i}" for i in range(counts.shape[1])])
+    counts_df["day"] = counts_df.index
+
+    # Melt to long format
+    counts_df_long = counts_df.melt(id_vars="day", var_name="variant", value_name="count")
+    counts_df_long.to_csv('data/counts_5var_180day.csv', index = False)
+    return counts_df_long
+
+def prepare_count_data_evofr(counts):
+
+    counts_df = convert_count_data_to_df(counts)
+    
+    start_date = pd.to_datetime("2025-01-01")
+    dates = [start_date + pd.Timedelta(days=day - 1) for day in counts_df.day]
+
+    counts_df['day'] = dates
+
+    counts_df = counts_df.rename(columns = {"day": "date", "count": "sequences"})
+
+    counts_df = counts_df[counts_df.sequences != 0]
+
+    return counts_df

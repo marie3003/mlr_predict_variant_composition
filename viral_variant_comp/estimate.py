@@ -74,6 +74,11 @@ def neg_log_likelihood_and_grad(params, c_t):
 
     return (-ll, -np.concatenate([grad_s[1:], grad_o[1:]]))  # we minimize the negative log-likelihood,  gradient of negative log-likelihood excluding s_1
 
+def calculate_cooccurence(counts):
+    presence = (counts > 0).astype(int)
+    co_occurrence_matrix = np.matmul(presence.T, presence)
+    return co_occurrence_matrix
+
 def reorder_variants(count_data):
 
     count_data = count_data.copy()
@@ -116,23 +121,23 @@ def calculate_viral_composition(counts):
 
     return result, composition_estimate
 
-def evaluate_result(result, growth_rates, log_init_freq):
+def evaluate_result(parameter_estimates, inv_hessian, growth_rates, log_init_freq):
 
     true_params = np.concatenate([growth_rates, log_init_freq])
     print(true_params.shape)
     
     z = 1.96    # 95% confidence interval
-    standard_errors =  np.insert(z * np.sqrt(np.diag(result.hess_inv)), 0, 0.0)
+    standard_errors =  np.insert(z * np.sqrt(np.diag(inv_hessian)), 0, 0.0)
     standard_errors =  np.insert(standard_errors, true_params.shape[0] // 2, 0.0)
-    lower_bounds = result.x - standard_errors
-    upper_bounds = result.x + standard_errors
+    lower_bounds = parameter_estimates - standard_errors
+    upper_bounds = parameter_estimates + standard_errors
 
-    deviations = result.x - true_params
+    deviations = parameter_estimates - true_params
     abs_deviations = np.abs(deviations)
     estimated_correctly = abs_deviations <= standard_errors
 
     df = pd.DataFrame({
-        'parameter_estimate': result.x,
+        'parameter_estimate': parameter_estimates,
         'true_parameter': true_params,
         'deviation': deviations,
         'abs_deviation': abs_deviations,
@@ -140,11 +145,60 @@ def evaluate_result(result, growth_rates, log_init_freq):
         'standard_error': standard_errors,
         'ci_lower': lower_bounds,
         'ci_upper': upper_bounds,
-        'n_variants': np.repeat(result.x.shape[0] // 2, result.x.shape[0]),
-        'parameter_type': np.concatenate([np.repeat('growth_rate', result.x.shape[0] // 2), np.repeat('log_initial_freq', result.x.shape[0] // 2)])
+        'n_variants': np.repeat(parameter_estimates.shape[0] // 2, parameter_estimates.shape[0]),
+        'parameter_type': np.concatenate([np.repeat('growth_rate', parameter_estimates.shape[0] // 2), np.repeat('log_initial_freq', parameter_estimates.shape[0] // 2)])
     })
 
     return df
+
+def calculateHessian(counts, s_vec, o_vec, ignore_pivot = False):
+
+    T, n = counts.shape
+
+    t_vec = np.arange(T)
+    N_vec = np.sum(counts, axis = 1)
+
+    logits = np.outer(t_vec, s_vec) + o_vec     # shape T + 1 times n 
+    max_logits = np.max(logits, axis = 1)   # shape T
+    shifted_exp_logits = np.exp(logits - max_logits[:, np.newaxis])  # max_logits here vector of shape T+1 times 1
+    sum_shifted_exp_logits = np.sum(shifted_exp_logits, axis = 1)   # shape T
+    freq = shifted_exp_logits / sum_shifted_exp_logits[:, np.newaxis]
+
+    N_freq = N_vec[:, np.newaxis] * freq
+    N_t_freq = t_vec[:, np.newaxis] * N_freq
+    N_t2_freq = t_vec[:, np.newaxis] * N_t_freq
+    counter_freq = 1 - freq
+
+    d_si_sj = np.matmul(np.transpose(N_t2_freq), freq) # n times n
+    d_si_si = -np.sum(np.multiply(N_t2_freq, counter_freq), axis = 0) # n
+    np.fill_diagonal(d_si_sj, d_si_si)
+
+    d_oi_oj = np.matmul(np.transpose(N_freq), freq)
+    d_oi_oi = - np.sum(np.multiply(N_freq, counter_freq), axis = 0)
+    np.fill_diagonal(d_oi_oj, d_oi_oi)
+
+    d_oi_sj = np.matmul(np.transpose(N_t_freq), freq)
+    d_oi_si = - np.sum(np.multiply(N_t_freq, counter_freq), axis = 0)
+    np.fill_diagonal(d_oi_sj, d_oi_si)
+
+    top = np.hstack((d_si_sj, d_oi_sj))   # shape: (n, 2n)
+    bottom = np.hstack((d_oi_sj, d_oi_oj))  # shape: (n, 2n)
+
+    hessian = - np.vstack((top, bottom))  # shape: (2n, 2n), minus because we're dealing with neg log likelihood
+    
+    if (ignore_pivot):
+        idx_to_remove = [0, len(s_vec)]
+        hessian = np.delete(hessian, idx_to_remove, axis=0)  # remove row
+        hessian = np.delete(hessian, idx_to_remove, axis=1)  # remove column
+
+    inv_hessian = np.linalg.inv(hessian)
+    eigenvalues, eigenvectors = np.linalg.eig(hessian)
+
+    return {"hessian": hessian, "inverse_hessian": inv_hessian, "eigenvalues_hessian": eigenvalues, "eigenvectors_hessian": eigenvectors}
+
+
+
+
 
 
 def neg_log_likelihood_and_grad_stepwise(params, c_t, fixed_params):
@@ -249,52 +303,6 @@ def calculate_viral_composition_stepwise(count_data, partition_size, overlap_siz
         o_vec[- n_remaining_param:] = o_estimate[- n_remaining_param:]
 
     composition_estimate = calculate_frequencies(data_reordered['counts'].shape[0], s_vec, o_vec)
+    hessian_result = calculateHessian(data_reordered['counts'], s_vec, o_vec, ignore_pivot=True)
 
-    return {'growth_rate_estimate': s_vec, "log_init_freq_estimate": o_vec, "composition_estimate": composition_estimate, "reordered_data": data_reordered}
-
-
-def calculateHessian(counts, s_vec, o_vec, ignore_pivot = False):
-
-    T, n = counts.shape
-
-    t_vec = np.arange(T)
-    N_vec = np.sum(counts, axis = 1)
-
-    logits = np.outer(t_vec, s_vec) + o_vec     # shape T + 1 times n 
-    max_logits = np.max(logits, axis = 1)   # shape T
-    shifted_exp_logits = np.exp(logits - max_logits[:, np.newaxis])  # max_logits here vector of shape T+1 times 1
-    sum_shifted_exp_logits = np.sum(shifted_exp_logits, axis = 1)   # shape T
-    freq = shifted_exp_logits / sum_shifted_exp_logits[:, np.newaxis]
-
-    N_freq = N_vec[:, np.newaxis] * freq
-    N_t_freq = t_vec[:, np.newaxis] * N_freq
-    N_t2_freq = t_vec[:, np.newaxis] * N_t_freq
-    counter_freq = 1 - freq
-
-    d_si_sj = np.matmul(np.transpose(N_t2_freq), freq) # n times n
-    d_si_si = -np.sum(np.multiply(N_t2_freq, counter_freq), axis = 0) # n
-    np.fill_diagonal(d_si_sj, d_si_si)
-
-    d_oi_oj = np.matmul(np.transpose(N_t_freq), freq)
-    d_oi_oi = - np.sum(np.multiply(N_t_freq, counter_freq), axis = 1)
-    np.fill_diagonal(d_oi_oj, d_oi_oi)
-
-    d_oi_sj = np.matmul(np.transpose(N_freq), freq)
-    d_oi_si = - np.sum(np.multiply(N_freq, counter_freq), axis = 1)
-    np.fill_diagonal(d_oi_sj, d_oi_si)
-
-    top = np.hstack((d_si_sj, d_oi_sj))   # shape: (n, 2n)
-    bottom = np.hstack((d_oi_sj, d_oi_oj))  # shape: (n, 2n)
-
-    hessian = - np.vstack((top, bottom))  # shape: (2n, 2n), minus because we're dealing with neg log likelihood
-    
-    if (ignore_pivot):
-        hessian = hessian[1:, 1:]
-
-    inv_hessian = np.linalg.inv(hessian)
-    eigenvalues, eigenvectors = np.linalg.eig(hessian)
-
-    return {"hessian": hessian, "inverse_hessian": inv_hessian, "eigenvalues_hessian": eigenvalues, "eigenvectors_hessian": eigenvectors}
-
-
-
+    return {'growth_rate_estimate': s_vec, "log_init_freq_estimate": o_vec, "composition_estimate": composition_estimate, "reordered_data": data_reordered, "hessian": hessian_result['hessian'], "hess_inv": hessian_result["inverse_hessian"]}

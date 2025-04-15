@@ -76,7 +76,7 @@ def plot_confidence_intervals(param_df):
     axes[0].set_ylim(growth_rate_range)
     axes[0].set_xlabel("Index")
     axes[0].set_ylabel("Estimated value")
-    #axes[0].grid(True)
+    axes[0].grid(True)
 
     # Plot for o_i (second half)
     min_lif = np.min(lif_df.parameter_estimate)
@@ -92,7 +92,7 @@ def plot_confidence_intervals(param_df):
     axes[1].set_xlabel("Index")
     axes[1].set_ylim(freq_range)
     axes[1].set_ylabel("Estimated value")
-    #axes[1].grid(True)
+    axes[1].grid(True)
 
     legend_elements = [
             Line2D([0], [0], marker='o', color='black', linestyle='None', label='Parameter estimate'),
@@ -102,4 +102,14 @@ def plot_confidence_intervals(param_df):
     fig.legend(handles=legend_elements, loc="upper right", ncol=1)
 
     plt.suptitle("95% Confidence Intervals for Parameters with Ground Truth", fontsize = 16)
+    plt.show()
+
+def plot_heatmap(matrix, title, x_label, y_label):
+
+    mask = (matrix == 0)
+
+    sns.heatmap(matrix, cmap='viridis', mask = mask)
+    plt.title(title)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
     plt.show()
