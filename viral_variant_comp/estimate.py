@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-from viral_variant_comp.simulate_count_data import calculate_frequencies
+from viral_variant_comp.simulate_count_data import calculate_frequencies, reorder_variants
 
 def neg_log_likelihood_and_grad_vectorised(params, c_t):
     """
@@ -84,39 +84,23 @@ def calculate_cooccurence(data, reorder = False):
     co_occurrence_matrix = np.matmul(presence.T, presence)
     return co_occurrence_matrix
 
-def reorder_variants(count_data):
-
-    count_data = count_data.copy()
-
-    variant_normalized_counts = count_data['counts'] / np.sum(count_data['counts'], axis = 0)
-    t_peaks = np.sum(variant_normalized_counts * np.arange(count_data['counts'].shape[0])[:, np.newaxis], axis = 0)
-
-    variant_position = np.argsort(t_peaks)
-    count_data['counts'] = count_data['counts'].copy()[:, variant_position]
-
-    count_data['growth_rates'] = count_data['growth_rates'].copy()[variant_position]
-    count_data['log_init_freq'] = count_data['log_init_freq'].copy()[variant_position]
-    count_data['freq'] = count_data['freq'].copy()[:, variant_position]
-
-    return count_data
-
 def calculate_inital_params(n_variants):
     initial_params = np.concatenate([np.repeat(0.1, n_variants - 1), np.repeat(-5, n_variants - 1)])
     return initial_params
 
-def calculate_viral_composition(counts):
+def calculate_viral_composition(data):
 
-    initial_params = calculate_inital_params(counts.shape[1])
+    initial_params = calculate_inital_params(data['counts'].shape[1])
     
-    result = minimize(fun = neg_log_likelihood_and_grad_vectorised, x0 = initial_params, args=(counts,), method = 'BFGS', jac = True)
+    result = minimize(fun = neg_log_likelihood_and_grad_vectorised, x0 = initial_params, args=(data['counts'],), method = 'BFGS', jac = True)
     result.x = np.insert(result.x, 0, 0.0)
-    result.x = np.insert(result.x, counts.shape[1], 0.0)
+    result.x = np.insert(result.x, data['counts'].shape[1], 0.0)
 
-    T = counts.shape[0]
+    T = data['counts'].shape[0]
     n = len(result.x) // 2
     growth_r = result.x[:n]
     log_initial_freq = result.x[n:]
-    composition_estimate = np.zeros(counts.shape)
+    composition_estimate = np.zeros(data['counts'].shape)
 
     for t in range(T):
         logits = growth_r * t + log_initial_freq
@@ -243,7 +227,7 @@ def neg_log_likelihood_and_grad_stepwise(params, c_t, fixed_params):
     return (-ll, -np.concatenate([grad_s[fixed_len:], grad_o[fixed_len:]]))  # we minimize the negative log-likelihood,  gradient of negative log-likelihood excluding s_1
 
 
-def calculate_viral_composition_stepwise(count_data, partition_size, overlap_size):
+def calculate_viral_composition_stepwise(data_reordered, partition_size, overlap_size):
     """
     Estimates growth rate and log. initial frequency for all viral variants in a stepwise manner.
     In each step a window of variants is estimated and moved over the variants which were pre-sorted by average time. 
@@ -255,7 +239,6 @@ def calculate_viral_composition_stepwise(count_data, partition_size, overlap_siz
 
     Afterwards, these parameter estimates are used to calculate viral frequencies for each observed time point.
     """
-    data_reordered = reorder_variants(count_data)
 
     step_size = partition_size - overlap_size
     n_partitions = int(1 + np.ceil((data_reordered['n_variants'] - partition_size) / step_size))

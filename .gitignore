@@ -28,3 +28,4 @@ dist/
 .idea/
 
 data/posterior_50var_1000days_1000samples.pkl
+data/simulated_counts

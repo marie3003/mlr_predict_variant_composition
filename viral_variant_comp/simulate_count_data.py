@@ -50,8 +50,24 @@ def sample(frequencies, n_samples):
     samples = np.array([np.random.multinomial(n_samples, row) for row in frequencies])
     return samples
 
+def reorder_variants(count_data):
 
-def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_entering_variants, n_samples, s_0, o_0):
+    count_data = count_data.copy()
+
+    variant_normalized_counts = count_data['counts'] / np.sum(count_data['counts'], axis = 0)
+    t_peaks = np.sum(variant_normalized_counts * np.arange(count_data['counts'].shape[0])[:, np.newaxis], axis = 0)
+
+    variant_position = np.argsort(t_peaks)
+    count_data['counts'] = count_data['counts'].copy()[:, variant_position]
+
+    count_data['growth_rates'] = count_data['growth_rates'].copy()[variant_position]
+    count_data['log_init_freq'] = count_data['log_init_freq'].copy()[variant_position]
+    count_data['freq'] = count_data['freq'].copy()[:, variant_position]
+
+    return count_data
+
+
+def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_entering_variants, n_samples, s_0, o_0, reorder = False):
     
     s_vec, o_vec = set_parameters(n_variants = n_variants, delta_gr_range = delta_gr_range, rate = new_var_rate, freq_entering_variants = freq_entering_variants, s_0 = s_0, o_0 = o_0)
 
@@ -66,7 +82,12 @@ def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_ent
     s_vec = s_vec[:n_variants]
     o_vec = o_vec[:n_variants]
 
-    return {"growth_rates": s_vec, "log_init_freq": o_vec, "freq": frequencies, "counts": counts, "n_variants": n_variants}
+    data = {"growth_rates": s_vec, "log_init_freq": o_vec, "freq": frequencies, "counts": counts, "n_variants": n_variants}
+    
+    if(reorder):
+        data = reorder_variants(data)
+
+    return data
 
 def convert_count_data_to_df(counts):
     # Convert to DataFrame with column names as variants
