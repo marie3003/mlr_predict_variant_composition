@@ -104,6 +104,90 @@ def plot_confidence_intervals(param_df):
     plt.suptitle("95% Confidence Intervals for Parameters with Ground Truth", fontsize = 16)
     plt.show()
 
+
+def plot_confidence_intervals_deviation(param_df):
+
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12), gridspec_kw={'height_ratios': [2, 1]})
+    gr_df = param_df[param_df.parameter_type == 'growth_rate']
+    lif_df = param_df[param_df.parameter_type == 'log_initial_freq']
+
+    # Plot for s_i (top left)
+    max_gr = np.max(gr_df.parameter_estimate)
+    growth_rate_range = (np.min(gr_df.parameter_estimate) - 0.5 * max_gr, max_gr + 0.5 * max_gr)
+
+    for i in range(len(gr_df)):
+        color = "green" if gr_df.ci_lower.iloc[i] <= gr_df.true_parameter.iloc[i] <= gr_df.ci_upper.iloc[i] else "red"
+        axes[0, 0].errorbar(i, gr_df.parameter_estimate.iloc[i], yerr=gr_df.standard_error.iloc[i], fmt='o', capsize=5, color='black')
+        axes[0, 0].plot(i, gr_df.true_parameter.iloc[i], 'x', color=color, markersize=10, label='True' if i == 0 else "")
+
+    axes[0, 0].set_title("Growth rate (s_i)")
+    axes[0, 0].set_ylim(growth_rate_range)
+    axes[0, 0].set_xlabel("Index")
+    axes[0, 0].set_ylabel("Estimated value")
+    axes[0, 0].grid(True)
+
+    # Plot for o_i (top right)
+    min_lif = np.min(lif_df.parameter_estimate)
+    freq_range = (min_lif + 0.5 * min_lif, np.max(lif_df.parameter_estimate) - 0.5 * min_lif)
+
+    for i in range(len(lif_df)):
+        color = "green" if lif_df.ci_lower.iloc[i] <= lif_df.true_parameter.iloc[i] <= lif_df.ci_upper.iloc[i] else "red"
+        axes[0, 1].errorbar(i, lif_df.parameter_estimate.iloc[i], yerr=lif_df.standard_error.iloc[i], fmt='o', capsize=5, color='black')
+        axes[0, 1].plot(i, lif_df.true_parameter.iloc[i], 'x', color=color, markersize=10, label='True' if i == 0 else "")
+
+    axes[0, 1].set_title("Log. initial frequencies (o_i)")
+    axes[0, 1].set_xlabel("Index")
+    axes[0, 1].set_ylim(freq_range)
+    axes[0, 1].set_ylabel("Estimated value")
+    axes[0, 1].grid(True)
+
+    # Deviation subplot for s_i (bottom left)
+    for i in range(len(gr_df)):
+        deviation = gr_df.deviation.iloc[i]
+        within_ci = gr_df.ci_lower.iloc[i] <= gr_df.true_parameter.iloc[i] <= gr_df.ci_upper.iloc[i]
+        point_color = "green" if within_ci else "red"
+
+        # Plot black error bar (lower zorder)
+        axes[1, 0].errorbar(i, 0, yerr=gr_df.standard_error.iloc[i], capsize=5, color='black', zorder=1)
+        # Plot colored point *after*, with higher zorder so it appears on top
+        axes[1, 0].plot(i, deviation, 'o', color=point_color, markersize=6, zorder=2)
+
+    axes[1, 0].axhline(0, linestyle='--', color='gray')
+    axes[1, 0].set_title("Deviation: Estimated - True (s_i)")
+    axes[1, 0].set_xlabel("Index")
+    axes[1, 0].set_ylabel("Deviation")
+    axes[1, 0].grid(True)
+
+    # same for o_i (bottom right)
+    for i in range(len(lif_df)):
+        deviation = lif_df.deviation.iloc[i]
+        within_ci = lif_df.ci_lower.iloc[i] <= lif_df.true_parameter.iloc[i] <= lif_df.ci_upper.iloc[i]
+        point_color = "green" if within_ci else "red"
+
+        axes[1, 1].errorbar(i, 0, yerr=lif_df.standard_error.iloc[i], capsize=5, color='black', zorder=1)
+        axes[1, 1].plot(i, deviation, 'o', color=point_color, markersize=6, zorder=2)
+
+    axes[1, 1].axhline(0, linestyle='--', color='gray')
+    axes[1, 1].set_title("Deviation: Estimated - True (o_i)")
+    axes[1, 1].set_xlabel("Index")
+    axes[1, 1].set_ylabel("Deviation")
+    axes[1, 1].grid(True)
+
+
+
+    # Legend for markers
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='black', linestyle='None', label='Estimate inside CI'),
+        Line2D([0], [0], marker='x', color='green', linestyle='None', label='True parameter inside CI', markersize=10),
+        Line2D([0], [0], marker='x', color='red', linestyle='None', label='True parameter outside CI', markersize=10),
+        Line2D([0], [0], marker='o', color='green', linestyle='None', label='Deviation inside CI'),
+        Line2D([0], [0], marker='o', color='red', linestyle='None', label='Deviation outside CI'),
+
+    ]
+    fig.legend(handles=legend_elements, loc="upper right", ncol=4)
+    plt.suptitle("95% Confidence Intervals and Deviations of parameter estimates", fontsize=16)
+
+
 def plot_heatmap(matrix, title, x_label, y_label):
 
     mask = (matrix == 0)

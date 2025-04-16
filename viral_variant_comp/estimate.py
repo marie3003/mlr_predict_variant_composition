@@ -74,7 +74,12 @@ def neg_log_likelihood_and_grad(params, c_t):
 
     return (-ll, -np.concatenate([grad_s[1:], grad_o[1:]]))  # we minimize the negative log-likelihood,  gradient of negative log-likelihood excluding s_1
 
-def calculate_cooccurence(counts):
+def calculate_cooccurence(data, reorder = False):
+    
+    if(reorder):
+        data = reorder_variants(data)
+
+    counts = data['counts']
     presence = (counts > 0).astype(int)
     co_occurrence_matrix = np.matmul(presence.T, presence)
     return co_occurrence_matrix
