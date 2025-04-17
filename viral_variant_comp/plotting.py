@@ -3,9 +3,13 @@ from matplotlib.lines import Line2D
 import seaborn as sns
 import numpy as np
 
-def plot_viral_composition(counts, freq, n_samples, composition_estimate = None, y_range = (1e-5, 2), logscale = True):
+import plotly.graph_objs as go
+import plotly.express as px
+import plotly.colors
 
-    plt.figure(figsize=(freq.shape[0] // 50, 6))
+def plot_viral_composition(counts, freq = None, composition_estimate = None, var_names = None, y_range = (1e-5, 2), logscale = True):
+
+    plt.figure(figsize=(counts.shape[0] // 50, 6))
     
     base_colors = [
     "#1f77b4",  # blue
@@ -33,10 +37,17 @@ def plot_viral_composition(counts, freq, n_samples, composition_estimate = None,
     "#66ddee"   # lighter cyan
     ]
 
+    n_samples = np.sum(counts, axis = 1)
+    rel_abund = counts / n_samples[:, np.newaxis]
+
+    if var_names is None:
+        var_names = [f'Variant {i+1}' for i in range(counts.shape[1])]
+
     for i in range(counts.shape[1]):
 
-        plt.scatter(np.arange(counts.shape[0]), counts[:, i] / n_samples, s= 10, alpha = 0.2, label = f'Variant {i+1}', color = base_colors[i % 10])
-        plt.plot(np.arange(freq.shape[0]), freq[:, i], color = base_colors[i % 10])
+        plt.scatter(np.arange(counts.shape[0]), rel_abund[:, i], s= 10, alpha = 0.2, label = var_names[i], color = base_colors[i % 10])
+        if freq is not None:
+            plt.plot(np.arange(freq.shape[0]), freq[:, i], color = base_colors[i % 10])
         if composition_estimate is not None:
             plt.plot(np.arange(composition_estimate.shape[0]), composition_estimate[:, i], color = brighter_colors[i % 10])
 
@@ -47,13 +58,81 @@ def plot_viral_composition(counts, freq, n_samples, composition_estimate = None,
         plt.ylim(y_range)
     plt.title("Disease Variants in Population")
 
-    if(freq.shape[1] > 10):
-        plt.legend(ncol = freq.shape[1] // 10, loc='upper center', bbox_to_anchor=(0.5, -0.15))
+    if(counts.shape[1] > 10):
+        plt.legend(ncol = counts.shape[1] // 10, loc='upper center', bbox_to_anchor=(0.5, -0.15))
     else:
         plt.legend()
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+
+def plot_viral_composition_interactive(counts, freq=None, composition_estimate=None, var_names=None, logscale=True):
+    
+    n_samples = np.sum(counts, axis=1)
+    rel_abund = counts / n_samples[:, np.newaxis]
+
+    if var_names is None:
+        var_names = [f'Variant {i+1}' for i in range(counts.shape[1])]
+
+    days = np.arange(counts.shape[0])
+    n_variants = counts.shape[1]
+
+    # Get color palette (e.g. 20 Plotly colors)
+    colors = plotly.colors.qualitative.Plotly * ((n_variants // len(plotly.colors.qualitative.Plotly)) + 1)
+
+    fig = go.Figure()
+
+    for i in range(n_variants):
+        color = colors[i % len(colors)]
+
+        # Counts (scatter)
+        fig.add_trace(go.Scatter(
+            x=days,
+            y=rel_abund[:, i],
+            mode='markers',
+            name=var_names[i],
+            marker=dict(size=6, opacity=0.4, color=color),
+            hovertemplate=(
+                f"Variant: {var_names[i]}<br>" +
+                "Day: %{x}<br>" +
+                "Abundance: %{y:.2%}<extra></extra>"
+            )
+        ))
+
+        # Frequency line (optional)
+        if freq is not None:
+            fig.add_trace(go.Scatter(
+                x=days,
+                y=freq[:, i],
+                mode='lines',
+                line=dict(width=2, color=color),
+                name=f"{var_names[i]} (freq)",
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+
+        # Composition estimate line (optional, dashed)
+        if composition_estimate is not None:
+            fig.add_trace(go.Scatter(
+                x=days,
+                y=composition_estimate[:, i],
+                mode='lines',
+                line=dict(width=2, dash='dot', color=color),
+                name=f"{var_names[i]} (estimate)",
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+
+    fig.update_layout(
+        title="Disease Variants in Population",
+        xaxis_title="Days",
+        yaxis_title="Abundancy [%]",
+        yaxis_type='log' if logscale else 'linear',
+        template='plotly_white',
+        hovermode='closest',
+    )
+
+    fig.show()
 
 
 def plot_confidence_intervals(param_df):

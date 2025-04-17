@@ -66,6 +66,18 @@ def reorder_variants(count_data):
 
     return count_data
 
+def reorder_variants_realdata(counts, var_names):
+
+    variant_normalized_counts = counts / np.sum(counts, axis = 0)
+    t_peaks = np.sum(variant_normalized_counts * np.arange(counts.shape[0])[:, np.newaxis], axis = 0)
+
+    variant_position = np.argsort(t_peaks)
+    counts = counts.copy()[:, variant_position]
+    var_names = var_names.copy()[variant_position]
+    
+    return counts, var_names
+
+
 
 def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_entering_variants, n_samples, s_0, o_0, reorder = False):
     
