@@ -1,6 +1,38 @@
 import numpy as np
 import pandas as pd
 
+### HELPER FUNCTIONS
+
+def reorder_variants(count_data):
+
+    count_data = count_data.copy()
+
+    variant_normalized_counts = count_data['counts'] / np.sum(count_data['counts'], axis = 0)
+    t_peaks = np.sum(variant_normalized_counts * np.arange(count_data['counts'].shape[0])[:, np.newaxis], axis = 0)
+
+    variant_position = np.argsort(t_peaks)
+    count_data['counts'] = count_data['counts'].copy()[:, variant_position]
+
+    count_data['growth_rates'] = count_data['growth_rates'].copy()[variant_position]
+    count_data['log_init_freq'] = count_data['log_init_freq'].copy()[variant_position]
+    count_data['freq'] = count_data['freq'].copy()[:, variant_position]
+
+    return count_data
+
+def calculate_frequencies(n_days, growth_rates, log_initial_freq):
+
+    t_vec = np.arange(n_days)
+    freqs = np.zeros((n_days, len(growth_rates)))
+
+    logits = np.outer(t_vec, growth_rates) + log_initial_freq     # shape T + 1 times n 
+    max_logits = np.max(logits, axis = 1)    
+    shifted_exp_logits = np.exp(logits - max_logits[:, np.newaxis])  # max_logits here vector of shape T+1 times 1
+    
+    freqs = shifted_exp_logits / np.sum(shifted_exp_logits, axis = 1, keepdims=True)
+    return freqs
+
+
+### SIMULATE COUNT DATA
 
 def set_parameters(n_variants, delta_gr_range, rate, freq_entering_variants, s_0 = 0, o_0 = 0):
 
@@ -32,52 +64,9 @@ def set_parameters(n_variants, delta_gr_range, rate, freq_entering_variants, s_0
 
     return s_vec, o_vec
 
-
-def calculate_frequencies(n_days, growth_rates, log_initial_freq):
-
-    freqs = np.zeros((n_days, len(growth_rates)))
-
-    for d in range(n_days):
-        logits = growth_rates * d + log_initial_freq
-        max_l = np.max(logits)
-        freqs[d] = np.exp(logits - max_l)   #log-sum-exp trick
-
-    freqs = freqs / np.sum(freqs, axis = 1, keepdims= True)
-    return freqs
-
-
 def sample(frequencies, n_samples):
     samples = np.array([np.random.multinomial(n_samples, row) for row in frequencies])
     return samples
-
-def reorder_variants(count_data):
-
-    count_data = count_data.copy()
-
-    variant_normalized_counts = count_data['counts'] / np.sum(count_data['counts'], axis = 0)
-    t_peaks = np.sum(variant_normalized_counts * np.arange(count_data['counts'].shape[0])[:, np.newaxis], axis = 0)
-
-    variant_position = np.argsort(t_peaks)
-    count_data['counts'] = count_data['counts'].copy()[:, variant_position]
-
-    count_data['growth_rates'] = count_data['growth_rates'].copy()[variant_position]
-    count_data['log_init_freq'] = count_data['log_init_freq'].copy()[variant_position]
-    count_data['freq'] = count_data['freq'].copy()[:, variant_position]
-
-    return count_data
-
-def reorder_variants_realdata(counts, var_names):
-
-    variant_normalized_counts = counts / np.sum(counts, axis = 0)
-    t_peaks = np.sum(variant_normalized_counts * np.arange(counts.shape[0])[:, np.newaxis], axis = 0)
-
-    variant_position = np.argsort(t_peaks)
-    counts = counts.copy()[:, variant_position]
-    var_names = var_names.copy()[variant_position]
-    
-    return counts, var_names
-
-
 
 def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_entering_variants, n_samples, s_0, o_0, reorder = False):
     
@@ -100,6 +89,9 @@ def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_ent
         data = reorder_variants(data)
 
     return data
+
+
+### PREPROCESSING EVOFR
 
 def convert_count_data_to_df(counts):
     # Convert to DataFrame with column names as variants
@@ -125,3 +117,27 @@ def prepare_count_data_evofr(counts):
     counts_df = counts_df[counts_df.sequences != 0]
 
     return counts_df
+
+
+### COVID DATA
+
+def reorder_variants_realdata(counts, var_names):
+
+    variant_normalized_counts = counts / np.sum(counts, axis = 0)
+    t_peaks = np.sum(variant_normalized_counts * np.arange(counts.shape[0])[:, np.newaxis], axis = 0)
+
+    variant_position = np.argsort(t_peaks)
+    counts = counts.copy()[:, variant_position]
+    var_names = var_names.copy()[variant_position]
+    
+    return counts, var_names
+
+def preprocess_covid_data(counts_df):
+    counts_df['date'] = pd.to_datetime(counts_df['date'])
+    counts_pivot = counts_df.pivot_table(index='date', columns='nextstrainClade', values='count', aggfunc='sum', fill_value=0).sort_index()
+    counts_pivot = counts_pivot.drop('recombinant', axis = 1)
+    counts_matrix = counts_pivot.to_numpy()
+
+    counts_matrix, var_names = reorder_variants_realdata(counts_matrix, counts_pivot.columns)
+    
+    return {'counts_df': counts_df, 'counts_df_pivot': counts_pivot, 'counts': counts_matrix, 'variant_names': var_names, 'n_variants': counts_matrix.shape[1]}

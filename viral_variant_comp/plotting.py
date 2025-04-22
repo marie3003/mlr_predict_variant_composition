@@ -7,6 +7,8 @@ import plotly.graph_objs as go
 import plotly.express as px
 import plotly.colors
 
+### PLOT viral composition data
+
 def plot_viral_composition(counts, freq = None, composition_estimate = None, var_names = None, y_range = (1e-5, 2), logscale = True):
 
     plt.figure(figsize=(counts.shape[0] // 50, 6))
@@ -65,6 +67,57 @@ def plot_viral_composition(counts, freq = None, composition_estimate = None, var
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+
+
+def plot_viral_composition_dual(counts, freq=None, composition_estimate=None, var_names=None, y_range=(1e-5, 2)):
+
+    base_colors = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
+    ]
+    brighter_colors = [
+        "#6baed6", "#ffae6b", "#66c266", "#ff6666", "#c2a5e2",
+        "#b38f87", "#f7a6d8", "#bfbfbf", "#d4e157", "#66ddee"
+    ]
+
+    n_samples = np.sum(counts, axis=1)
+    rel_abund = counts / n_samples[:, np.newaxis]
+
+    if var_names is None:
+        var_names = [f'Variant {i+1}' for i in range(counts.shape[1])]
+
+    fig, axes = plt.subplots(2, 1, figsize=(counts.shape[0] // 50 + 4, 10), sharex=True)
+
+    for ax_idx, logscale in enumerate([False, True]):
+        ax = axes[ax_idx]
+
+        for i in range(counts.shape[1]):
+            ax.scatter(np.arange(counts.shape[0]), rel_abund[:, i], s=10, alpha=0.2, label=var_names[i], color=base_colors[i % 10])
+            if freq is not None:
+                ax.plot(np.arange(freq.shape[0]), freq[:, i], color=base_colors[i % 10])
+            if composition_estimate is not None:
+                ax.plot(np.arange(composition_estimate.shape[0]), composition_estimate[:, i], color=brighter_colors[i % 10])
+
+        ax.set_ylabel("Abundancy [%]")
+        if logscale:
+            ax.set_yscale('log')
+            ax.set_ylim(y_range)
+            ax.set_title("Disease Variants in Population (log scale)")
+        else:
+            ax.set_title("Disease Variants in Population (linear scale)")
+
+        ax.grid(True)
+
+    axes[-1].set_xlabel("Days")
+
+    if counts.shape[1] > 10:
+        axes[-1].legend(ncol=counts.shape[1] // 10, loc='upper center', bbox_to_anchor=(0.5, -0.25))
+    else:
+        axes[-1].legend(loc='upper center', bbox_to_anchor=(0.5, -0.25))
+
+    plt.tight_layout()
+    plt.show()
+
 
 def plot_viral_composition_interactive(counts, freq=None, composition_estimate=None, var_names=None, logscale=True):
     
@@ -134,6 +187,9 @@ def plot_viral_composition_interactive(counts, freq=None, composition_estimate=N
 
     fig.show()
 
+
+
+### EVALUATE ESTIMATION RESULTS
 
 def plot_confidence_intervals(param_df):
 
@@ -265,7 +321,9 @@ def plot_confidence_intervals_deviation(param_df):
     ]
     fig.legend(handles=legend_elements, loc="upper right", ncol=4)
     plt.suptitle("95% Confidence Intervals and Deviations of parameter estimates", fontsize=16)
+    
 
+### HELPERS
 
 def plot_heatmap(matrix, title, x_label, y_label):
 
