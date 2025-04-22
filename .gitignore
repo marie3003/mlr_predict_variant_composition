@@ -27,7 +27,7 @@ dist/
 # JetBrains
 .idea/
 
+data/counts_5var_180day.csv
 data/posterior_50var_1000days_1000samples.pkl
 data/simulated_counts
 data/simulated_counts.zip
-data/counts_5var_180day.csv
