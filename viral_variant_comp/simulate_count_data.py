@@ -68,7 +68,10 @@ def sample(frequencies, n_samples):
     samples = np.array([np.random.multinomial(n_samples, row) for row in frequencies])
     return samples
 
-def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_entering_variants, n_samples, s_0, o_0, reorder = False):
+def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_entering_variants, n_samples, s_0, o_0, reorder = True, seed=None):
+
+    if seed is not None:
+        np.random.seed(seed)
     
     s_vec, o_vec = set_parameters(n_variants = n_variants, delta_gr_range = delta_gr_range, rate = new_var_rate, freq_entering_variants = freq_entering_variants, s_0 = s_0, o_0 = o_0)
 

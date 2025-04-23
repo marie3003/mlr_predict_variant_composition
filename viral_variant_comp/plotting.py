@@ -51,7 +51,7 @@ def plot_viral_composition(counts, freq = None, composition_estimate = None, var
         if freq is not None:
             plt.plot(np.arange(freq.shape[0]), freq[:, i], color = base_colors[i % 10])
         if composition_estimate is not None:
-            plt.plot(np.arange(composition_estimate.shape[0]), composition_estimate[:, i], color = brighter_colors[i % 10])
+            plt.plot(np.arange(composition_estimate.shape[0]), composition_estimate[:, i], color = brighter_colors[i % 10], linestyle='--')
 
     plt.xlabel("Days")
     plt.ylabel("Abundancy [%]")
@@ -96,7 +96,7 @@ def plot_viral_composition_dual(counts, freq=None, composition_estimate=None, va
             if freq is not None:
                 ax.plot(np.arange(freq.shape[0]), freq[:, i], color=base_colors[i % 10])
             if composition_estimate is not None:
-                ax.plot(np.arange(composition_estimate.shape[0]), composition_estimate[:, i], color=brighter_colors[i % 10])
+                ax.plot(np.arange(composition_estimate.shape[0]), composition_estimate[:, i], color=brighter_colors[i % 10], linestyle='--')
 
         ax.set_ylabel("Abundancy [%]")
         if logscale:
@@ -158,7 +158,7 @@ def plot_viral_composition_interactive(counts, freq=None, composition_estimate=N
                 x=days,
                 y=freq[:, i],
                 mode='lines',
-                line=dict(width=2, color=color),
+                line=dict(width=2, dash = 'solid', color=color),
                 name=f"{var_names[i]} (freq)",
                 showlegend=False,
                 hoverinfo='skip'

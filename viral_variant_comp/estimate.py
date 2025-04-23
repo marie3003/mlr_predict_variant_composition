@@ -299,7 +299,6 @@ def evaluate_result(s_vec_est, o_vec_est, inv_hessian, growth_rates, log_init_fr
 
     parameter_estimates = np.concatenate([s_vec_est, o_vec_est])
     true_params = np.concatenate([growth_rates, log_init_freq])
-    print(true_params.shape)
     
     z = 1.96    # 95% confidence interval
     standard_errors =  np.insert(z * np.sqrt(np.diag(inv_hessian)), 0, 0.0)
@@ -311,6 +310,14 @@ def evaluate_result(s_vec_est, o_vec_est, inv_hessian, growth_rates, log_init_fr
     abs_deviations = np.abs(deviations)
     estimated_correctly = abs_deviations <= standard_errors
 
+    diff_to_next_true = np.diff(true_params)
+    diff_to_next_true[growth_rates.shape[0] - 1] = np.nan
+    diff_to_next_true = np.append(diff_to_next_true, np.nan)
+    diff_to_next_est = np.diff(parameter_estimates)
+    diff_to_next_est[growth_rates.shape[0] - 1] = np.nan
+    diff_to_next_est = np.append(diff_to_next_est, np.nan)
+    squared_error = (diff_to_next_est - diff_to_next_true)**2
+
     df = pd.DataFrame({
         'parameter_estimate': parameter_estimates,
         'true_parameter': true_params,
@@ -320,6 +327,9 @@ def evaluate_result(s_vec_est, o_vec_est, inv_hessian, growth_rates, log_init_fr
         'standard_error': standard_errors,
         'ci_lower': lower_bounds,
         'ci_upper': upper_bounds,
+        'difference_to_next_estimate': diff_to_next_est,
+        'difference_to_next_true': diff_to_next_true,
+        'difference_to_next_se': squared_error,
         'n_variants': np.repeat(parameter_estimates.shape[0] // 2, parameter_estimates.shape[0]),
         'parameter_type': np.concatenate([np.repeat('growth_rate', parameter_estimates.shape[0] // 2), np.repeat('log_initial_freq', parameter_estimates.shape[0] // 2)])
     })
