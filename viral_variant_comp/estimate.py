@@ -3,7 +3,8 @@ import pandas as pd
 from scipy.optimize import minimize
 
 import evofr as ef
-from viral_variant_comp.simulate_count_data import calculate_frequencies, reorder_variants, prepare_count_data_evofr
+from viral_variant_comp.simulate_count_data import calculate_frequencies, reorder_variants, prepare_count_data_evofr, create_count_data
+from viral_variant_comp.plotting import plot_viral_composition_dual, plot_confidence_intervals_deviation
 
 from abc import ABC, abstractmethod
 
@@ -189,7 +190,7 @@ class StepwiseBFGSCompositionEstimator(BaseCompositionEstimator):
         In each estimation step all variants that were included before the current window are included in the likelihood calculation but not estimated again.
         For parameters that enter a second window, the estimate from the previous window is chosen as new initial guess for the parameter.
         In the first iteration, the first parameter needs to be fixed to (0,0) as a reference.
-        @param partition_size: size of window, number of variants newly estimated at once
+        @param partition_size: size of window, number of variants newly estimated at once (can't be greater than number of variants in data)
         @param overlap_size: overlap between windows, number of previously already estimated variants that are estimated again in new window
 
         Afterwards, these parameter estimates are used to calculate viral frequencies for each observed time point.
@@ -283,11 +284,9 @@ class EvofrCompositionEstimator(BaseCompositionEstimator):
 
         self._postprocess_estimates()
 
-        
 
 
-
-
+### EVALUATE RESULT
 
 def calculate_cooccurence(counts):
     presence = (counts > 0).astype(int)
@@ -301,8 +300,9 @@ def evaluate_result(s_vec_est, o_vec_est, inv_hessian, growth_rates, log_init_fr
     true_params = np.concatenate([growth_rates, log_init_freq])
     
     z = 1.96    # 95% confidence interval
-    standard_errors =  np.insert(z * np.sqrt(np.diag(inv_hessian)), 0, 0.0)
-    standard_errors =  np.insert(standard_errors, true_params.shape[0] // 2, 0.0)
+    variance = np.insert(np.diag(inv_hessian), 0, 0.0)
+    variance = np.insert(variance, true_params.shape[0] // 2, 0.0)
+    standard_errors =  z * np.sqrt(variance)
     lower_bounds = parameter_estimates - standard_errors
     upper_bounds = parameter_estimates + standard_errors
 
@@ -310,6 +310,7 @@ def evaluate_result(s_vec_est, o_vec_est, inv_hessian, growth_rates, log_init_fr
     abs_deviations = np.abs(deviations)
     estimated_correctly = abs_deviations <= standard_errors
 
+    # calculate error of differences
     diff_to_next_true = np.diff(true_params)
     diff_to_next_true[growth_rates.shape[0] - 1] = np.nan
     diff_to_next_true = np.append(diff_to_next_true, np.nan)
@@ -317,6 +318,20 @@ def evaluate_result(s_vec_est, o_vec_est, inv_hessian, growth_rates, log_init_fr
     diff_to_next_est[growth_rates.shape[0] - 1] = np.nan
     diff_to_next_est = np.append(diff_to_next_est, np.nan)
     squared_error = (diff_to_next_est - diff_to_next_true)**2
+
+    # calculate variance of differences
+    var_i = variance[:-1]
+    var_next = variance[1:]
+    covariance = np.insert(np.diag(inv_hessian, k = 1), 0, 0.0) # choose covariance of pivot to second element as 0
+    covariance = np.insert(covariance, growth_rates.shape[0] - 1, 0.0)
+    var_diff = var_i + var_next - 2*covariance
+    var_diff[growth_rates.shape[0] - 1] = np.nan
+    var_diff = np.append(var_diff, np.nan)
+
+    # Confidence intervals for the differences between estimates
+    standard_errors_diff = z * np.sqrt(var_diff)
+    ci_diff_lower = diff_to_next_est - standard_errors_diff
+    ci_diff_upper = diff_to_next_est + standard_errors_diff
 
     df = pd.DataFrame({
         'parameter_estimate': parameter_estimates,
@@ -330,8 +345,137 @@ def evaluate_result(s_vec_est, o_vec_est, inv_hessian, growth_rates, log_init_fr
         'difference_to_next_estimate': diff_to_next_est,
         'difference_to_next_true': diff_to_next_true,
         'difference_to_next_se': squared_error,
+        'variance_of_diff': var_diff,
+        'standard_error_of_diff': standard_errors_diff,
+        'ci_lower_of_diff': ci_diff_lower,
+        'ci_upper_of_diff': ci_diff_upper,
         'n_variants': np.repeat(parameter_estimates.shape[0] // 2, parameter_estimates.shape[0]),
         'parameter_type': np.concatenate([np.repeat('growth_rate', parameter_estimates.shape[0] // 2), np.repeat('log_initial_freq', parameter_estimates.shape[0] // 2)])
     })
 
     return df
+
+def simulate_estimate_evaluate(n_variants = 50, n_days = 1000, delta_gr_range = 0.2, new_var_rate = 1/14, freq_entering_variants = 0.0001, n_samples = 1000, s_0 = 0., o_0 = 0., reorder=True, seed = 5,
+                               estimation_method = 'BFGS',
+                               partition_size = None, overlap_size = None,
+                               iterations = None, learning_rate = None,
+                               plot_results = False):
+    
+    data = create_count_data(n_variants = n_variants, n_days = n_days, delta_gr_range = delta_gr_range, new_var_rate = new_var_rate, freq_entering_variants = freq_entering_variants, n_samples = n_samples, s_0 = s_0, o_0 = o_0, reorder=reorder, seed = seed)
+    
+    if estimation_method == 'BFGS':
+        estimator = BFGSCompositionEstimator(data['counts'])
+    elif estimation_method == 'stepwiseBFGS':
+        estimator = StepwiseBFGSCompositionEstimator(data['counts'], partition_size=partition_size, overlap_size=overlap_size) # should overlap size depend on number of variants (possibly write function that determines overlap size based on co-occurence matrix)
+    elif estimation_method == 'evofr':
+        estimator = EvofrCompositionEstimator(data['counts'], iterations = iterations, learning_rate= learning_rate, generation_time=1)
+
+    estimator.fit()
+    result = estimator.get_results()
+    df = evaluate_result(result['growth_rate_estimate'], result['log_init_freq_estimate'], result['hess_inv'], data['growth_rates'], data['log_init_freq'])
+
+    if plot_results:
+        plot_viral_composition_dual(data['counts'], data['freq'], result['composition_estimate'], y_range = (1e-5, 2))
+        plot_confidence_intervals_deviation(df)
+
+    return df
+
+def run_sampling_experiment(
+    variable_to_vary: str,
+    variable_values: list,
+    estimation_methods: list = ['BFGS', 'stepwiseBFGS', 'evofr'],
+    n_variants=50,
+    n_days=1000,
+    delta_gr_range=0.2,
+    new_var_rate=1/14,
+    freq_entering_variants=0.0001,
+    n_samples=1000,
+    partition_size=10,
+    overlap_size=4,
+    iterations=300000,
+    learning_rate=4e-3,
+    seed=5,
+    n_repeats=5,
+    plot_results=False
+):
+    all_results = []
+
+    if variable_to_vary == 'n_samples':
+        days_vec = np.repeat(n_days, len(variable_values))
+    elif variable_to_vary == 'n_variants':
+        days_vec = np.array(variable_values) * 18
+    elif variable_to_vary == 'new_var_rate':
+        days_vec = np.ceil(n_variants / np.array(variable_values)).astype(int) * 2
+    else:
+        raise ValueError(f"Unsupported variable_to_vary: {variable_to_vary}")
+
+    for i, value in enumerate(variable_values):
+        n_days = days_vec[i]
+
+        for method in estimation_methods:
+            print(f'Estimation method: {method}, {variable_to_vary} = {value}')
+
+            for r in range(n_repeats):
+                current_seed = seed + r
+
+                method_kwargs = {}
+                if method == 'stepwiseBFGS':
+                    method_kwargs = {'partition_size': partition_size, 'overlap_size': overlap_size}
+                elif method == 'evofr':
+                    method_kwargs = {'iterations': iterations, 'learning_rate': learning_rate}
+
+                params = {
+                    'n_variants': n_variants,
+                    'n_days': n_days,
+                    'delta_gr_range': delta_gr_range,
+                    'new_var_rate': new_var_rate,
+                    'freq_entering_variants': freq_entering_variants,
+                    'n_samples': n_samples,
+                    'estimation_method': method,
+                    'seed': current_seed,
+                    'plot_results': plot_results
+                }
+
+                # Override the varied parameter
+                params[variable_to_vary] = value
+
+                # Simulate
+                df = simulate_estimate_evaluate(**params, **method_kwargs)
+                mse_gr = np.nanmean(df[df.parameter_type == 'growth_rate']['difference_to_next_se'])
+                mse_lif = np.nanmean(df[df.parameter_type != 'growth_rate']['difference_to_next_se'])
+
+                all_results.append({
+                    'method': method,
+                    'gr_mse': mse_gr,
+                    'lif_mse': mse_lif,
+                    'n_samples': params['n_samples'],
+                    'n_variants': params['n_variants'],
+                    'new_var_rate': params['new_var_rate'],
+                    'n_days': params['n_days']
+                })
+
+    # Convert to DataFrame
+    df = pd.DataFrame(all_results)
+
+    # Group and aggregate
+    grouped = df.groupby(['n_samples', 'n_variants', 'new_var_rate', 'n_days', 'method']).agg(
+        gr_mse_mean=('gr_mse', 'mean'),
+        gr_mse_std=('gr_mse', 'std'),
+        lif_mse_mean=('lif_mse', 'mean'),
+        lif_mse_std=('lif_mse', 'std')
+    ).reset_index()
+
+    # Pivot for mean
+    df_mean = grouped.pivot(index=['n_samples', 'n_variants', 'new_var_rate', 'n_days'], columns='method', values=['gr_mse_mean', 'lif_mse_mean'])
+    df_mean.columns = [f"{metric}_{method}" for metric, method in df_mean.columns]
+
+    # Pivot for std
+    df_std = grouped.pivot(index=['n_samples', 'n_variants', 'new_var_rate', 'n_days'], columns='method', values=['gr_mse_std', 'lif_mse_std'])
+    df_std.columns = [f"{metric}_{method}" for metric, method in df_std.columns]
+
+    # Combine mean and std
+    df_final = pd.concat([df_mean, df_std], axis=1).reset_index()
+
+    return df_final
+
+

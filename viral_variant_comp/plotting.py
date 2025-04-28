@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import seaborn as sns
 import numpy as np
+import pandas as pd
 
 import plotly.graph_objs as go
 import plotly.express as px
@@ -240,88 +241,235 @@ def plot_confidence_intervals(param_df):
     plt.show()
 
 
-def plot_confidence_intervals_deviation(param_df):
-
+def plot_confidence_intervals_deviation(param_df, plot_differences=False):
     fig, axes = plt.subplots(2, 2, figsize=(16, 12), gridspec_kw={'height_ratios': [2, 1]})
-    gr_df = param_df[param_df.parameter_type == 'growth_rate']
-    lif_df = param_df[param_df.parameter_type == 'log_initial_freq']
+    gr_df = param_df[param_df.parameter_type == 'growth_rate'].reset_index(drop=True)
+    lif_df = param_df[param_df.parameter_type == 'log_initial_freq'].reset_index(drop=True)
 
-    # Plot for s_i (top left)
-    max_gr = np.max(gr_df.parameter_estimate)
-    growth_rate_range = (np.min(gr_df.parameter_estimate) - 0.5 * max_gr, max_gr + 0.5 * max_gr)
+    def plot_single_panel(ax, df, param_label, diff=False):
+        for i in range(len(df)):
+            if diff and pd.isna(df.difference_to_next_estimate.iloc[i]):
+                continue
 
-    for i in range(len(gr_df)):
-        color = "green" if gr_df.ci_lower.iloc[i] <= gr_df.true_parameter.iloc[i] <= gr_df.ci_upper.iloc[i] else "red"
-        axes[0, 0].errorbar(i, gr_df.parameter_estimate.iloc[i], yerr=gr_df.standard_error.iloc[i], fmt='o', capsize=5, color='black')
-        axes[0, 0].plot(i, gr_df.true_parameter.iloc[i], 'x', color=color, markersize=10, label='True' if i == 0 else "")
+            if diff:
+                estimate = df.difference_to_next_estimate.iloc[i]
+                true_val = df.difference_to_next_true.iloc[i]
+                err = df.standard_error_of_diff.iloc[i]
+                ci_low = df.ci_lower_of_diff.iloc[i]
+                ci_up = df.ci_upper_of_diff.iloc[i]
+            else:
+                estimate = df.parameter_estimate.iloc[i]
+                true_val = df.true_parameter.iloc[i]
+                err = df.standard_error.iloc[i]
+                ci_low = df.ci_lower.iloc[i]
+                ci_up = df.ci_upper.iloc[i]
 
-    axes[0, 0].set_title("Growth rate (s_i)")
-    axes[0, 0].set_ylim(growth_rate_range)
-    axes[0, 0].set_xlabel("Index")
-    axes[0, 0].set_ylabel("Estimated value")
-    axes[0, 0].grid(True)
+            color = "green" if ci_low <= true_val <= ci_up else "red"
+            ax.errorbar(i, estimate, yerr=err, fmt='o', capsize=5, color='black')
+            ax.plot(i, true_val, 'x', color=color, markersize=10)
 
-    # Plot for o_i (top right)
-    min_lif = np.min(lif_df.parameter_estimate)
-    freq_range = (min_lif + 0.5 * min_lif, np.max(lif_df.parameter_estimate) - 0.5 * min_lif)
+        ax.set_xlabel("Index")
+        ax.set_ylabel("Difference" if diff else "Estimated value")
+        ax.set_title(f"{param_label} {'(Δ)' if diff else ''}")
+        ax.grid(True)
 
-    for i in range(len(lif_df)):
-        color = "green" if lif_df.ci_lower.iloc[i] <= lif_df.true_parameter.iloc[i] <= lif_df.ci_upper.iloc[i] else "red"
-        axes[0, 1].errorbar(i, lif_df.parameter_estimate.iloc[i], yerr=lif_df.standard_error.iloc[i], fmt='o', capsize=5, color='black')
-        axes[0, 1].plot(i, lif_df.true_parameter.iloc[i], 'x', color=color, markersize=10, label='True' if i == 0 else "")
+    def plot_deviation_panel(ax, df, param_label, diff=False):
+        for i in range(len(df)):
+            if diff and pd.isna(df.difference_to_next_estimate.iloc[i]):
+                continue
 
-    axes[0, 1].set_title("Log. initial frequencies (o_i)")
-    axes[0, 1].set_xlabel("Index")
-    axes[0, 1].set_ylim(freq_range)
-    axes[0, 1].set_ylabel("Estimated value")
-    axes[0, 1].grid(True)
+            if diff:
+                deviation = df.difference_to_next_estimate.iloc[i] - df.difference_to_next_true.iloc[i]
+                err = df.standard_error_of_diff.iloc[i]
+                ci_low = df.ci_lower_of_diff.iloc[i]
+                ci_up = df.ci_upper_of_diff.iloc[i]
+                true_val = df.difference_to_next_true.iloc[i]
+            else:
+                deviation = df.deviation.iloc[i]
+                err = df.standard_error.iloc[i]
+                ci_low = df.ci_lower.iloc[i]
+                ci_up = df.ci_upper.iloc[i]
+                true_val = df.true_parameter.iloc[i]
 
-    # Deviation subplot for s_i (bottom left)
-    for i in range(len(gr_df)):
-        deviation = gr_df.deviation.iloc[i]
-        within_ci = gr_df.ci_lower.iloc[i] <= gr_df.true_parameter.iloc[i] <= gr_df.ci_upper.iloc[i]
-        point_color = "green" if within_ci else "red"
+            point_color = "green" if ci_low <= true_val <= ci_up else "red"
 
-        # Plot black error bar (lower zorder)
-        axes[1, 0].errorbar(i, 0, yerr=gr_df.standard_error.iloc[i], capsize=5, color='black', zorder=1)
-        # Plot colored point *after*, with higher zorder so it appears on top
-        axes[1, 0].plot(i, deviation, 'o', color=point_color, markersize=6, zorder=2)
+            ax.errorbar(i, 0, yerr=err, capsize=5, color='black', zorder=1)
+            ax.plot(i, deviation, 'o', color=point_color, markersize=6, zorder=2)
 
-    axes[1, 0].axhline(0, linestyle='--', color='gray')
-    axes[1, 0].set_title("Deviation: Estimated - True (s_i)")
-    axes[1, 0].set_xlabel("Index")
-    axes[1, 0].set_ylabel("Deviation")
-    axes[1, 0].grid(True)
+        ax.axhline(0, linestyle='--', color='gray')
+        ax.set_title(f"Deviation {'(Δ)' if diff else ''}: Estimated - True ({param_label})")
+        ax.set_xlabel("Index")
+        ax.set_ylabel("Deviation")
+        ax.grid(True)
 
-    # same for o_i (bottom right)
-    for i in range(len(lif_df)):
-        deviation = lif_df.deviation.iloc[i]
-        within_ci = lif_df.ci_lower.iloc[i] <= lif_df.true_parameter.iloc[i] <= lif_df.ci_upper.iloc[i]
-        point_color = "green" if within_ci else "red"
+    # Top row: point estimates
+    plot_single_panel(axes[0, 0], gr_df, "Growth rate (s_i)", diff=plot_differences)
+    plot_single_panel(axes[0, 1], lif_df, "Log. initial frequencies (o_i)", diff=plot_differences)
 
-        axes[1, 1].errorbar(i, 0, yerr=lif_df.standard_error.iloc[i], capsize=5, color='black', zorder=1)
-        axes[1, 1].plot(i, deviation, 'o', color=point_color, markersize=6, zorder=2)
+    # Bottom row: deviations
+    plot_deviation_panel(axes[1, 0], gr_df, "s_i", diff=plot_differences)
+    plot_deviation_panel(axes[1, 1], lif_df, "o_i", diff=plot_differences)
 
-    axes[1, 1].axhline(0, linestyle='--', color='gray')
-    axes[1, 1].set_title("Deviation: Estimated - True (o_i)")
-    axes[1, 1].set_xlabel("Index")
-    axes[1, 1].set_ylabel("Deviation")
-    axes[1, 1].grid(True)
-
-
-
-    # Legend for markers
+    # Legend
     legend_elements = [
         Line2D([0], [0], marker='o', color='black', linestyle='None', label='Estimate inside CI'),
         Line2D([0], [0], marker='x', color='green', linestyle='None', label='True parameter inside CI', markersize=10),
         Line2D([0], [0], marker='x', color='red', linestyle='None', label='True parameter outside CI', markersize=10),
         Line2D([0], [0], marker='o', color='green', linestyle='None', label='Deviation inside CI'),
         Line2D([0], [0], marker='o', color='red', linestyle='None', label='Deviation outside CI'),
-
     ]
-    fig.legend(handles=legend_elements, loc="upper right", ncol=4)
-    plt.suptitle("95% Confidence Intervals and Deviations of parameter estimates", fontsize=16)
     
+    fig.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.02), ncol=5)
+    plt.suptitle(
+        "95% Confidence Intervals and Deviations of " + 
+        ("Parameter Differences (Δθ)" if plot_differences else "Parameter Estimates"),
+        fontsize=16
+    )
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+
+def plot_mse_sampling_size(df, methods=['BFGS', 'stepwiseBFGS']):
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=True)
+
+    targets = {
+        'gr': 'Growth Rate',
+        'lif': 'Log Initial Frequency'
+    }
+
+    markers = ['s', 'o','^', 'D', 'v', '*', 'P', 'X']
+    colors = [
+    "#a6444f",  # reddish
+    "#57a8b8",  # teal
+    "#80557e",  # purple
+    "#b5d2f2",  # light blue
+    "#d991b4",  # pink
+    "#397398",  # dark blue
+    "#7394c2",  # mid blue
+    "#7a7a7a"]   # gray
+
+    for ax, target in zip(axes, targets.keys()):
+        for idx, method in enumerate(methods):
+            mean_col = f"{target}_mse_mean_{method}"
+            std_col = f"{target}_mse_std_{method}"
+
+            # Plot as unconnected points with error bars
+            ax.errorbar(
+                df['n_samples'],
+                df[mean_col],
+                yerr=df[std_col],
+                fmt=markers[idx % len(markers)],              # point only (no line)
+                capsize=5,
+                color=colors[idx % len(colors)],
+                label=method
+            )
+
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_title(f"Δ{targets[target]} MSE vs. Sampling Size")
+        ax.set_xlabel("Number of samples per day")
+        ax.set_ylabel("Mean Squared Error")
+        ax.grid(True)
+        ax.legend(title="Estimation Method")
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_mse_n_variants(df, methods=['BFGS', 'stepwiseBFGS']):
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=True)
+
+    targets = {
+        'gr': 'Growth Rate',
+        'lif': 'Log Initial Frequency'
+    }
+
+    markers = ['s', 'o', '^', 'D', 'v', '*', 'P', 'X']
+    colors = [
+    "#a6444f",  # reddish
+    "#57a8b8",  # teal
+    "#80557e",  # purple
+    "#b5d2f2",  # light blue
+    "#d991b4",  # pink
+    "#397398",  # dark blue
+    "#7394c2",  # mid blue
+    "#7a7a7a"]   # gray
+
+    for ax, target in zip(axes, targets.keys()):
+        for idx, method in enumerate(methods):
+            mean_col = f"{target}_mse_mean_{method}"
+            std_col = f"{target}_mse_std_{method}"
+
+            ax.errorbar(
+                df['n_variants_real_mean'],
+                df[mean_col],
+                yerr=df[std_col],
+                fmt=markers[idx % len(markers)],
+                capsize=5,
+                color=colors[idx % len(colors)],
+                label=method
+            )
+
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_title(f"Δ{targets[target]} MSE vs. Number of Variants")
+        ax.set_xlabel("Number of variants")
+        ax.set_ylabel("Mean Squared Error")
+        ax.grid(True)
+        ax.legend(title="Estimation Method")
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_mse_variant_appearance(df, methods=['BFGS', 'stepwiseBFGS'], x_col= 'new_var_rate'):
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=True)
+
+    targets = {
+        'gr': 'Growth Rate',
+        'lif': 'Log Initial Frequency'
+    }
+
+    markers = ['s', 'o', '^', 'D', 'v', '*', 'P', 'X']
+    colors = [
+        "#a6444f",  # reddish
+        "#57a8b8",  # teal
+        "#80557e",  # purple
+        "#b5d2f2",  # light blue
+        "#d991b4",  # pink
+        "#397398",  # dark blue
+        "#7394c2",  # mid blue
+        "#7a7a7a"   # gray
+    ]
+
+    for ax, target in zip(axes, targets.keys()):
+        for idx, method in enumerate(methods):
+            mean_col = f"{target}_mse_mean_{method}"
+            std_col = f"{target}_mse_std_{method}"
+
+            ax.errorbar(
+                df[x_col],
+                df[mean_col],
+                yerr=df[std_col],
+                fmt=markers[idx % len(markers)],
+                capsize=5,
+                color=colors[idx % len(colors)],
+                label=method
+            )
+
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        if(x_col == 'mean_entropy_mean'):
+            ax.set_title(f"Δ{targets[target]} MSE vs. Variant Diversity")
+            ax.set_xlabel("Mean Entropy of variant compostition (freq.)")
+        else:
+            ax.set_title(f"Δ{targets[target]} MSE vs. Variant Appearance Rate")
+            ax.set_xlabel("Variant appearance rate (per day)")
+        ax.set_ylabel("Mean Squared Error")
+        ax.grid(True)
+        ax.legend(title="Estimation Method")
+
+    plt.tight_layout()
+    plt.show()
+
+
 
 ### HELPERS
 

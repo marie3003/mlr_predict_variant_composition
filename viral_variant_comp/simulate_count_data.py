@@ -31,6 +31,21 @@ def calculate_frequencies(n_days, growth_rates, log_initial_freq):
     freqs = shifted_exp_logits / np.sum(shifted_exp_logits, axis = 1, keepdims=True)
     return freqs
 
+def calculate_entropy(freq, cutoff):
+    log_freq = np.zeros_like(freq)
+    log_freq[freq > 0] = np.log(freq[freq > 0])
+
+    freq_log_freq = -1 * np.multiply(freq,log_freq)
+    entropy_vec = np.sum(freq_log_freq, axis = 1)
+
+    # cut end of entropy vector with cutoff to avoid end where no new variants are added biasing result
+    indices = np.where(entropy_vec > cutoff)
+    last_valid_idx = (np.max(indices) + 1) if indices[0].size > 0 else len(entropy_vec)
+    last_valid_idx = np.min([last_valid_idx, len(entropy_vec)])
+    entropy_vec = entropy_vec[:last_valid_idx]
+
+    mean_entropy = np.mean(entropy_vec)
+    return {"entropies": entropy_vec, "mean_entropy": mean_entropy, "n_days_included": last_valid_idx}
 
 ### SIMULATE COUNT DATA
 
@@ -68,7 +83,7 @@ def sample(frequencies, n_samples):
     samples = np.array([np.random.multinomial(n_samples, row) for row in frequencies])
     return samples
 
-def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_entering_variants, n_samples, s_0, o_0, reorder = True, seed=None):
+def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_entering_variants, n_samples, s_0, o_0, reorder = True, seed=None, entropy_cutoff = 1e-4):
 
     if seed is not None:
         np.random.seed(seed)
@@ -86,7 +101,9 @@ def create_count_data(n_variants, n_days, delta_gr_range, new_var_rate, freq_ent
     s_vec = s_vec[:n_variants]
     o_vec = o_vec[:n_variants]
 
-    data = {"growth_rates": s_vec, "log_init_freq": o_vec, "freq": frequencies, "counts": counts, "n_variants": n_variants}
+    entropy_data = calculate_entropy(frequencies, entropy_cutoff)
+
+    data = {"growth_rates": s_vec, "log_init_freq": o_vec, "freq": frequencies, "counts": counts, "n_variants": n_variants, "entropy_data": entropy_data}
     
     if(reorder):
         data = reorder_variants(data)
