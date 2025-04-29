@@ -6,6 +6,7 @@ import pandas as pd
 
 import plotly.graph_objs as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 import plotly.colors
 
 ### PLOT viral composition data
@@ -70,7 +71,7 @@ def plot_viral_composition(counts, freq = None, composition_estimate = None, var
     plt.show()
 
 
-def plot_viral_composition_dual(counts, freq=None, composition_estimate=None, var_names=None, y_range=(1e-5, 2)):
+def plot_viral_composition_dual(counts, freq=None, composition_estimate=None, var_names=None, y_range=(1e-5, 2), show_legend = True):
 
     base_colors = [
         "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -111,10 +112,11 @@ def plot_viral_composition_dual(counts, freq=None, composition_estimate=None, va
 
     axes[-1].set_xlabel("Days")
 
-    if counts.shape[1] > 10:
-        axes[-1].legend(ncol=counts.shape[1] // 10, loc='upper center', bbox_to_anchor=(0.5, -0.25))
-    else:
-        axes[-1].legend(loc='upper center', bbox_to_anchor=(0.5, -0.25))
+    if show_legend:
+        if counts.shape[1] > 10:
+            axes[-1].legend(ncol=counts.shape[1] // 10, loc='upper center', bbox_to_anchor=(0.5, -0.25))
+        else:
+            axes[-1].legend(loc='upper center', bbox_to_anchor=(0.5, -0.25))
 
     plt.tight_layout()
     plt.show()
@@ -468,6 +470,166 @@ def plot_mse_variant_appearance(df, methods=['BFGS', 'stepwiseBFGS'], x_col= 'ne
 
     plt.tight_layout()
     plt.show()
+
+
+### PLOTS COVID DATA
+def plot_growth_rate_over_time(clades_df, pangos_df, color_palette = 'range'):
+
+    if color_palette == 'range':    
+        palette = sns.color_palette('husl', n_colors=len(clades_df))
+        clade_colors = {clade: f'rgb({r*255:.0f},{g*255:.0f},{b*255:.0f})' for clade, (r, g, b) in zip(clades_df['clade'], palette)}
+    elif color_palette == 'jumps':
+        palette = (px.colors.qualitative.Dark24 * (len(clades_df) // 24 + 1))[:len(clades_df)]
+        clade_colors = {clade: color for clade, color in zip(clades_df['clade'], palette)}
+
+
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        subplot_titles=("Clade Growth Rate over Time", "Pango Lineage Growth Rate over Time")
+    )
+
+    # --- Top plot: Clade growth ---
+    for idx, row in clades_df.iterrows():
+        fig.add_trace(
+            go.Scatter(
+                x=[row['clade_time']],
+                y=[row['clade_growth']],
+                mode='markers+text',
+                marker=dict(color=clade_colors[row['clade']], size=10),
+                text=[row['clade']],
+                textposition='top center',
+                textfont=dict(size=12),
+                name=row['clade'],
+                hovertemplate=f"Clade: {row['clade']}<br>Time: {row['clade_time']:.2f}<br>Growth: {row['clade_growth']:.2f}<extra></extra>"
+            ),
+            row=1, col=1
+        )
+
+    # --- Bottom plot: Pango lineage growth ---
+    for idx, row in pangos_df.iterrows():
+        fig.add_trace(
+            go.Scatter(
+                x=[row['pango_time']],
+                y=[row['pango_growth']],
+                mode='markers',
+                marker=dict(color=clade_colors.get(row['clade'], 'gray'), size=5),
+                name=row['seqName'], 
+                hovertemplate=f"Pango: {row['seqName']}<br>Clade: {row['clade']}<br>Time: {row['pango_time']:.2f}<br>Growth: {row['pango_growth']:.2f}<extra></extra>",
+                showlegend=False
+            ),
+            row=2, col=1
+        )
+
+
+    fig.update_layout(
+        height=900,
+        title_text="Clade and Pango Lineage Growth Rates Over Time",
+        xaxis_title="Time (Clades)",
+        yaxis_title="Clade Growth Rate",
+        xaxis2_title="Time (Pango Lineages)",
+        yaxis2_title="Pango Growth Rate",
+        legend_title_text='Clade',
+        legend=dict(
+            orientation='h',
+            y=-0.25,
+            x=0.5,
+            xanchor='center',
+            title_text=None
+        ),
+        margin=dict(t=100, b=150)
+    )
+
+
+    fig.show()
+
+
+def plot_clade_pango_over_time(clades_df, pangos_df, color_palette='range', plot_type='growth'):
+
+    assert plot_type in ['growth', 'lif'], "plot_type must be 'growth' or 'lif'"
+
+    if color_palette == 'range':    
+        palette = sns.color_palette('husl', n_colors=len(clades_df))
+        clade_colors = {clade: f'rgb({r*255:.0f},{g*255:.0f},{b*255:.0f})' for clade, (r, g, b) in zip(clades_df['clade'], palette)}
+    elif color_palette == 'jumps':
+        palette = (px.colors.qualitative.Dark24 * (len(clades_df) // 24 + 1))[:len(clades_df)]
+        clade_colors = {clade: color for clade, color in zip(clades_df['clade'], palette)}
+
+    # --- Select column names & titles based on plot_type ---
+    if plot_type == 'growth':
+        clade_y = 'clade_growth'
+        pango_y = 'pango_growth'
+        y_title_clade = 'Clade Growth Rate'
+        y_title_pango = 'Pango Growth Rate'
+        hover_label = 'Growth'
+        main_title = "Clade and Pango Lineage Growth Rates Over Time"
+    else:
+        clade_y = 'clade_lif'
+        pango_y = 'pango_lif'
+        y_title_clade = 'Clade Log Init Freq'
+        y_title_pango = 'Pango Log Init Freq'
+        hover_label = 'Log Init Freq'
+        main_title = "Clade and Pango Lineage Log Initial Frequencies Over Time"
+
+    # --- Subplots ---
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=False,
+        subplot_titles=(y_title_clade + " over Time", y_title_pango + " over Time")
+    )
+
+    # --- Top plot: Clade ---
+    for idx, row in clades_df.iterrows():
+        fig.add_trace(
+            go.Scatter(
+                x=[row['clade_time']],
+                y=[row[clade_y]],
+                mode='markers+text',
+                marker=dict(color=clade_colors[row['clade']], size=10),
+                text=[row['clade']],
+                textposition='top center',
+                textfont=dict(size=12),
+                name=row['clade'],
+                hovertemplate=f"Clade: {row['clade']}<br>Time: {row['clade_time']:.2f}<br>{hover_label}: {row[clade_y]:.2f}<extra></extra>"
+            ),
+            row=1, col=1
+        )
+
+    # --- Bottom plot: Pango ---
+    for idx, row in pangos_df.iterrows():
+        fig.add_trace(
+            go.Scatter(
+                x=[row['pango_time']],
+                y=[row[pango_y]],
+                mode='markers',
+                marker=dict(color=clade_colors.get(row['clade'], 'gray'), size=5),
+                name=row['seqName'],
+                hovertemplate=f"Pango: {row['seqName']}<br>Clade: {row['clade']}<br>Time: {row['pango_time']:.2f}<br>{hover_label}: {row[pango_y]:.2f}<extra></extra>",
+                showlegend=False
+            ),
+            row=2, col=1
+        )
+
+    # --- Layout ---
+    fig.update_layout(
+        height=900,
+        title_text=main_title,
+        xaxis_title="Time (Clades)",
+        yaxis_title=y_title_clade,
+        xaxis2_title="Time (Pango Lineages)",
+        yaxis2_title=y_title_pango,
+        legend_title_text='Clade',
+        legend=dict(
+            orientation='h',
+            y=-0.25,
+            x=0.5,
+            xanchor='center',
+            title_text=None
+        ),
+        margin=dict(t=100, b=150)
+    )
+
+    fig.show()
 
 
 

@@ -144,20 +144,22 @@ def prepare_count_data_evofr(counts):
 def reorder_variants_realdata(counts, var_names):
 
     variant_normalized_counts = counts / np.sum(counts, axis = 0)
-    t_peaks = np.sum(variant_normalized_counts * np.arange(counts.shape[0])[:, np.newaxis], axis = 0)
+    t_peaks = np.sum(variant_normalized_counts * np.arange(counts.shape[0], dtype=float)[:, np.newaxis], axis=0)
 
     variant_position = np.argsort(t_peaks)
     counts = counts.copy()[:, variant_position]
     var_names = var_names.copy()[variant_position]
+    t_peaks = t_peaks[variant_position]
     
-    return counts, var_names
+    return counts, var_names, t_peaks
 
-def preprocess_covid_data(counts_df):
+def preprocess_covid_data(counts_df, grouping_col = 'nextstrainClade'):
     counts_df['date'] = pd.to_datetime(counts_df['date'])
-    counts_pivot = counts_df.pivot_table(index='date', columns='nextstrainClade', values='count', aggfunc='sum', fill_value=0).sort_index()
-    counts_pivot = counts_pivot.drop('recombinant', axis = 1)
+    counts_pivot = counts_df.pivot_table(index='date', columns=grouping_col, values='count', aggfunc='sum', fill_value=0).sort_index()  #ignores rows with nan values in grouping col (same values are nan for pango lineage and clade)
+    if grouping_col == 'nextstrainClade':
+        counts_pivot = counts_pivot.drop('recombinant', axis = 1)
     counts_matrix = counts_pivot.to_numpy()
 
-    counts_matrix, var_names = reorder_variants_realdata(counts_matrix, counts_pivot.columns)
+    counts_matrix, var_names, t_peaks = reorder_variants_realdata(counts_matrix, counts_pivot.columns)
     
-    return {'counts_df': counts_df, 'counts_df_pivot': counts_pivot, 'counts': counts_matrix, 'variant_names': var_names, 'n_variants': counts_matrix.shape[1]}
+    return {'counts_df': counts_df, 'counts_df_pivot': counts_pivot, 'counts': counts_matrix, 'variant_names': var_names, 'n_variants': counts_matrix.shape[1], 'mean_time': t_peaks}
