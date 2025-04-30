@@ -286,11 +286,32 @@ class EvofrCompositionEstimator(BaseCompositionEstimator):
 
 
 
-### EVALUATE RESULT
+### HELPERS
 
 def calculate_cooccurence(counts):
     presence = (counts > 0).astype(int)
     co_occurrence_matrix = np.matmul(presence.T, presence)
     return co_occurrence_matrix
 
+import numpy as np
+import copy
 
+def choose_pivot_variant(data_pango, pivot):  # e.g. pivot = 'A'
+
+    data_pango_copy = copy.deepcopy(data_pango)
+
+
+    idx_pivot = np.where(data_pango_copy['variant_names'] == pivot)[0][0]
+
+    # Create a new ordering with pivot first
+    new_order = [idx_pivot] + [i for i in range(len(data_pango_copy['variant_names'])) if i != idx_pivot]
+
+    # Reorder all relevant arrays
+    data_pango_copy['counts'] = data_pango_copy['counts'][:, new_order]
+    data_pango_copy['variant_names'] = data_pango_copy['variant_names'][new_order]
+    data_pango_copy['mean_time'] = data_pango_copy['mean_time'][new_order]
+
+    return data_pango_copy
+
+def calculate_mean_fitness(freq, growth_rates):
+    return np.matmul(freq, growth_rates)

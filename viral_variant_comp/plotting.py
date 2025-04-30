@@ -9,6 +9,8 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.colors
 
+from viral_variant_comp.estimate import calculate_mean_fitness
+
 ### PLOT viral composition data
 
 def plot_viral_composition(counts, freq = None, composition_estimate = None, var_names = None, y_range = (1e-5, 2), logscale = True):
@@ -473,75 +475,6 @@ def plot_mse_variant_appearance(df, methods=['BFGS', 'stepwiseBFGS'], x_col= 'ne
 
 
 ### PLOTS COVID DATA
-def plot_growth_rate_over_time(clades_df, pangos_df, color_palette = 'range'):
-
-    if color_palette == 'range':    
-        palette = sns.color_palette('husl', n_colors=len(clades_df))
-        clade_colors = {clade: f'rgb({r*255:.0f},{g*255:.0f},{b*255:.0f})' for clade, (r, g, b) in zip(clades_df['clade'], palette)}
-    elif color_palette == 'jumps':
-        palette = (px.colors.qualitative.Dark24 * (len(clades_df) // 24 + 1))[:len(clades_df)]
-        clade_colors = {clade: color for clade, color in zip(clades_df['clade'], palette)}
-
-
-    fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=False,
-        subplot_titles=("Clade Growth Rate over Time", "Pango Lineage Growth Rate over Time")
-    )
-
-    # --- Top plot: Clade growth ---
-    for idx, row in clades_df.iterrows():
-        fig.add_trace(
-            go.Scatter(
-                x=[row['clade_time']],
-                y=[row['clade_growth']],
-                mode='markers+text',
-                marker=dict(color=clade_colors[row['clade']], size=10),
-                text=[row['clade']],
-                textposition='top center',
-                textfont=dict(size=12),
-                name=row['clade'],
-                hovertemplate=f"Clade: {row['clade']}<br>Time: {row['clade_time']:.2f}<br>Growth: {row['clade_growth']:.2f}<extra></extra>"
-            ),
-            row=1, col=1
-        )
-
-    # --- Bottom plot: Pango lineage growth ---
-    for idx, row in pangos_df.iterrows():
-        fig.add_trace(
-            go.Scatter(
-                x=[row['pango_time']],
-                y=[row['pango_growth']],
-                mode='markers',
-                marker=dict(color=clade_colors.get(row['clade'], 'gray'), size=5),
-                name=row['seqName'], 
-                hovertemplate=f"Pango: {row['seqName']}<br>Clade: {row['clade']}<br>Time: {row['pango_time']:.2f}<br>Growth: {row['pango_growth']:.2f}<extra></extra>",
-                showlegend=False
-            ),
-            row=2, col=1
-        )
-
-
-    fig.update_layout(
-        height=900,
-        title_text="Clade and Pango Lineage Growth Rates Over Time",
-        xaxis_title="Time (Clades)",
-        yaxis_title="Clade Growth Rate",
-        xaxis2_title="Time (Pango Lineages)",
-        yaxis2_title="Pango Growth Rate",
-        legend_title_text='Clade',
-        legend=dict(
-            orientation='h',
-            y=-0.25,
-            x=0.5,
-            xanchor='center',
-            title_text=None
-        ),
-        margin=dict(t=100, b=150)
-    )
-
-
-    fig.show()
 
 
 def plot_clade_pango_over_time(clades_df, pangos_df, color_palette='range', plot_type='growth'):
@@ -630,6 +563,62 @@ def plot_clade_pango_over_time(clades_df, pangos_df, color_palette='range', plot
     )
 
     fig.show()
+
+
+def plot_mean_fitness_time(result_pango, result_clades):
+    time = np.arange(1, result_pango['composition_estimate'].shape[0] + 1, 1)
+
+    # Compute mean fitness over time
+    pango_mean_fitness = calculate_mean_fitness(result_pango['composition_estimate'], result_pango['growth_rate_estimate'])
+    clade_mean_fitness = calculate_mean_fitness(result_clades['composition_estimate'], result_clades['growth_rate_estimate'])
+
+    # Compute change in mean fitness (delta)
+    delta_pango = np.diff(pango_mean_fitness)
+    delta_clade = np.diff(clade_mean_fitness)
+    delta_time = time[1:]
+
+    # Determine shared y-limits
+    mf_min = min(pango_mean_fitness.min(), clade_mean_fitness.min())
+    mf_max = max(pango_mean_fitness.max(), clade_mean_fitness.max())
+    delta_min = min(delta_pango.min(), delta_clade.min())
+    delta_max = max(delta_pango.max(), delta_clade.max())
+    mf_add = 0.1
+    delta_add = 0.001
+
+    # Plotting
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(15, 8), sharex='col')
+
+    # Row 1: Mean fitness
+    axes[0, 0].plot(time, pango_mean_fitness, color='tab:blue')
+    axes[0, 0].set_ylabel('Mean Fitness')
+    axes[0, 0].set_title('Pango Mean Fitness')
+    axes[0, 0].set_ylim(mf_min - mf_add, mf_max + mf_add)
+
+    axes[0, 1].plot(time, clade_mean_fitness, color='tab:green')
+    axes[0, 1].set_ylabel('Mean Fitness')
+    axes[0, 1].set_title('Clade Mean Fitness')
+    axes[0, 1].set_ylim(mf_min - mf_add, mf_max + mf_add)
+
+    # Row 2: ΔFitness
+    axes[1, 0].plot(delta_time, delta_pango, color='tab:blue')
+    axes[1, 0].set_xlabel('Time')
+    axes[1, 0].set_ylabel('ΔFitness')
+    axes[1, 0].set_title('Δ Pango Mean Fitness')
+    axes[1, 0].set_ylim(delta_min - delta_add, delta_max + delta_add)
+
+    axes[1, 1].plot(delta_time, delta_clade, color='tab:green')
+    axes[1, 1].set_xlabel('Time')
+    axes[1, 1].set_ylabel('ΔFitness')
+    axes[1, 1].set_title('Δ Clade Mean Fitness')
+    axes[1, 1].set_ylim(delta_min - delta_add, delta_max + delta_add)
+
+    # Styling
+    for ax in axes.flat:
+        ax.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
 
 
 
