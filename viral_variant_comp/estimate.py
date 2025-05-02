@@ -4,7 +4,6 @@ from scipy.optimize import minimize
 
 import evofr as ef
 from viral_variant_comp.simulate_count_data import calculate_frequencies, reorder_variants, prepare_count_data_evofr, create_count_data
-from viral_variant_comp.plotting import plot_viral_composition_dual, plot_confidence_intervals_deviation
 
 from abc import ABC, abstractmethod
 
