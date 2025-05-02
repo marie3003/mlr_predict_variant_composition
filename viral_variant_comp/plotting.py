@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from datetime import datetime, timedelta
+from matplotlib.dates import MonthLocator, DateFormatter
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -9,7 +11,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.colors
 
-from viral_variant_comp.estimate import calculate_mean_fitness
+from viral_variant_comp.plotting import calculate_mean_fitness
 
 ### PLOT viral composition data
 
@@ -73,7 +75,9 @@ def plot_viral_composition(counts, freq = None, composition_estimate = None, var
     plt.show()
 
 
-def plot_viral_composition_dual(counts, freq=None, composition_estimate=None, var_names=None, y_range=(1e-5, 2), show_legend = True):
+def plot_viral_composition_dual(counts, freq=None, composition_estimate=None,
+                                 var_names=None, y_range=(1e-5, 2),
+                                 show_legend=True, start_date=None):
 
     base_colors = [
         "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -86,9 +90,16 @@ def plot_viral_composition_dual(counts, freq=None, composition_estimate=None, va
 
     n_samples = np.sum(counts, axis=1)
     rel_abund = counts / n_samples[:, np.newaxis]
+    days = np.arange(counts.shape[0])
 
     if var_names is None:
         var_names = [f'Variant {i+1}' for i in range(counts.shape[1])]
+
+    # Create time labels
+    if start_date is not None:
+        time_labels = [datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=int(day)) for day in days]
+    else:
+        time_labels = days
 
     fig, axes = plt.subplots(2, 1, figsize=(counts.shape[0] // 50 + 4, 10), sharex=True)
 
@@ -96,11 +107,13 @@ def plot_viral_composition_dual(counts, freq=None, composition_estimate=None, va
         ax = axes[ax_idx]
 
         for i in range(counts.shape[1]):
-            ax.scatter(np.arange(counts.shape[0]), rel_abund[:, i], s=10, alpha=0.2, label=var_names[i], color=base_colors[i % 10])
+            ax.scatter(time_labels, rel_abund[:, i], s=10, alpha=0.2,
+                       label=var_names[i], color=base_colors[i % 10])
             if freq is not None:
-                ax.plot(np.arange(freq.shape[0]), freq[:, i], color=base_colors[i % 10])
+                ax.plot(time_labels, freq[:, i], color=base_colors[i % 10])
             if composition_estimate is not None:
-                ax.plot(np.arange(composition_estimate.shape[0]), composition_estimate[:, i], color=brighter_colors[i % 10], linestyle='--')
+                ax.plot(time_labels, composition_estimate[:, i],
+                        color=brighter_colors[i % 10], linestyle='--')
 
         ax.set_ylabel("Abundancy [%]")
         if logscale:
@@ -112,7 +125,13 @@ def plot_viral_composition_dual(counts, freq=None, composition_estimate=None, va
 
         ax.grid(True)
 
-    axes[-1].set_xlabel("Days")
+    axes[-1].set_xlabel("Date" if start_date else "Days")
+
+    # Format x-axis with ticks every 3 months if dates are used
+    if start_date:
+        axes[-1].xaxis.set_major_locator(MonthLocator(interval=3))
+        axes[-1].xaxis.set_major_formatter(DateFormatter('%b %Y'))
+        fig.autofmt_xdate()
 
     if show_legend:
         if counts.shape[1] > 10:
@@ -124,8 +143,9 @@ def plot_viral_composition_dual(counts, freq=None, composition_estimate=None, va
     plt.show()
 
 
-def plot_viral_composition_interactive(counts, freq=None, composition_estimate=None, var_names=None, logscale=True):
-    
+def plot_viral_composition_interactive(counts, freq=None, composition_estimate=None,
+                                       var_names=None, logscale=True, start_date=None):
+
     n_samples = np.sum(counts, axis=1)
     rel_abund = counts / n_samples[:, np.newaxis]
 
@@ -133,9 +153,15 @@ def plot_viral_composition_interactive(counts, freq=None, composition_estimate=N
         var_names = [f'Variant {i+1}' for i in range(counts.shape[1])]
 
     days = np.arange(counts.shape[0])
-    n_variants = counts.shape[1]
+    if start_date is not None:
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        x_vals = [start + timedelta(days=int(d)) for d in days]
+        xaxis_title = "Date"
+    else:
+        x_vals = days
+        xaxis_title = "Days"
 
-    # Get color palette (e.g. 20 Plotly colors)
+    n_variants = counts.shape[1]
     colors = plotly.colors.qualitative.Plotly * ((n_variants // len(plotly.colors.qualitative.Plotly)) + 1)
 
     fig = go.Figure()
@@ -143,36 +169,34 @@ def plot_viral_composition_interactive(counts, freq=None, composition_estimate=N
     for i in range(n_variants):
         color = colors[i % len(colors)]
 
-        # Counts (scatter)
+        # Scatter points
         fig.add_trace(go.Scatter(
-            x=days,
+            x=x_vals,
             y=rel_abund[:, i],
             mode='markers',
             name=var_names[i],
             marker=dict(size=6, opacity=0.4, color=color),
             hovertemplate=(
                 f"Variant: {var_names[i]}<br>" +
-                "Day: %{x}<br>" +
+                "Time: %{x|%b %d, %Y}<br>" +
                 "Abundance: %{y:.2%}<extra></extra>"
             )
         ))
 
-        # Frequency line (optional)
         if freq is not None:
             fig.add_trace(go.Scatter(
-                x=days,
+                x=x_vals,
                 y=freq[:, i],
                 mode='lines',
-                line=dict(width=2, dash = 'solid', color=color),
+                line=dict(width=2, dash='solid', color=color),
                 name=f"{var_names[i]} (freq)",
                 showlegend=False,
                 hoverinfo='skip'
             ))
 
-        # Composition estimate line (optional, dashed)
         if composition_estimate is not None:
             fig.add_trace(go.Scatter(
-                x=days,
+                x=x_vals,
                 y=composition_estimate[:, i],
                 mode='lines',
                 line=dict(width=2, dash='dot', color=color),
@@ -183,7 +207,7 @@ def plot_viral_composition_interactive(counts, freq=None, composition_estimate=N
 
     fig.update_layout(
         title="Disease Variants in Population",
-        xaxis_title="Days",
+        xaxis_title=xaxis_title,
         yaxis_title="Abundancy [%]",
         yaxis_type='log' if logscale else 'linear',
         template='plotly_white',
@@ -476,10 +500,44 @@ def plot_mse_variant_appearance(df, methods=['BFGS', 'stepwiseBFGS'], x_col= 'ne
 
 ### PLOTS COVID DATA
 
+def plot_count_distribution_over_time(counts_df):
+    """
+    Plot the distribution of counts over time.
+    """
 
-def plot_clade_pango_over_time(clades_df, pangos_df, color_palette='range', plot_type='growth'):
+    # Count values per date and sort
+    date_counts = counts_df['date'].value_counts().sort_index()
+    ax = date_counts.plot(kind='bar', figsize=(12, 5))
+
+    # Format x-axis ticks: keep only one tick per month
+    xticklabels = [label.get_text() for label in ax.get_xticklabels()]
+    dates = pd.to_datetime(xticklabels, errors='coerce')
+
+    # Replace x-axis labels with month-start labels only
+    new_labels = []
+    last_month = None
+    for d in dates:
+        if pd.isna(d):
+            new_labels.append("")
+        elif d.month != last_month:
+            new_labels.append(d.strftime("%b %Y"))  # e.g., "Apr 2025"
+            last_month = d.month
+        else:
+            new_labels.append("")
+
+    ax.set_xticklabels(new_labels, rotation=45, ha='right')
+    plt.xlabel('Date')
+    plt.ylabel('Count')
+    plt.title('Counts per Date')
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_clade_pango_over_time(pango_clade_mapping_df, color_palette='range', plot_type='growth'):
 
     assert plot_type in ['growth', 'lif'], "plot_type must be 'growth' or 'lif'"
+
+    clades_df = pango_clade_mapping_df[['clade', 'clade_growth', 'clade_lif', 'clade_time']].drop_duplicates()    #independent of pango lineages
 
     if color_palette == 'range':    
         palette = sns.color_palette('husl', n_colors=len(clades_df))
@@ -529,7 +587,7 @@ def plot_clade_pango_over_time(clades_df, pangos_df, color_palette='range', plot
         )
 
     # --- Bottom plot: Pango ---
-    for idx, row in pangos_df.iterrows():
+    for idx, row in pango_clade_mapping_df.iterrows():
         fig.add_trace(
             go.Scatter(
                 x=[row['pango_time']],
@@ -618,6 +676,17 @@ def plot_mean_fitness_time(result_pango, result_clades):
 
     plt.tight_layout()
     plt.show()
+
+
+def plot_pango_lineages_of_single_clade(clade, data_pango, result_pango, pango_clade_mapping):
+    var_clade = list(pango_clade_mapping[pango_clade_mapping.clade == clade].seqName)
+    mask = np.isin(data_pango['variant_names'], var_clade)
+    counts_clade = data_pango['counts'][:,mask]
+    var_names_clade = data_pango['variant_names'][mask]
+
+    plot_viral_composition_interactive(counts_clade,composition_estimate=result_pango['composition_estimate'][:,mask], var_names=var_names_clade, logscale = False, start_date="2020-01-01")
+    #plot_viral_composition_dual(counts_clade, composition_estimate=result_pango['composition_estimate'][:,mask], var_names=var_names_clade, y_range = (1e-5, 2), show_legend=False)
+
 
 
 

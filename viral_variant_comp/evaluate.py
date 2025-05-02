@@ -89,6 +89,7 @@ def simulate_estimate_evaluate(n_variants = 50, n_days = 1000, delta_gr_range = 
     if plot_results:
         plot_viral_composition_dual(data['counts'], data['freq'], result['composition_estimate'], y_range = (1e-5, 2))
         plot_confidence_intervals_deviation(df)
+        plot_confidence_intervals_deviation(df, plot_differences=True)
 
     return df
 
@@ -199,5 +200,36 @@ def run_sampling_experiment(
     # Merge mean realized variants cleanly
     df_final = df_final.merge(n_variants_real_df, on=['n_samples', 'n_variants_requested', 'new_var_rate', 'n_days'], how='left')
 
-    return df_final
+    return df_final, df
+
+
+def create_pango_clade_mapping(data_clades, result_clades, data_pango, result_pango, path = "data/seq_to_clade_mapping.tsv", save_df = False, path_to_save = "data/covid_results/pango_clade_mapping_parameters.csv"):
+
+    pango_clade_mapping = pd.read_csv(path, sep="\t")
+
+    # Create mapping dictionaries
+    pango_growth_dict = dict(zip(data_pango['variant_names'], result_pango['growth_rate_estimate']))
+    clade_growth_dict = dict(zip(data_clades['variant_names'], result_clades['growth_rate_estimate']))
+
+    pango_freq_dict = dict(zip(data_pango['variant_names'], result_pango['log_init_freq_estimate']))
+    clade_freq_dict = dict(zip(data_clades['variant_names'], result_clades['log_init_freq_estimate']))
+
+    pango_time_dict = dict(zip(data_pango['variant_names'], data_pango['mean_time']))
+    clade_time_dict = dict(zip(data_clades['variant_names'], data_clades['mean_time']))
+
+    # Map the growth rates into the DataFrame
+    pango_clade_mapping['pango_growth'] = pango_clade_mapping['seqName'].map(pango_growth_dict)
+    pango_clade_mapping['clade_growth'] = pango_clade_mapping['clade'].map(clade_growth_dict)
+    pango_clade_mapping['pango_lif'] = pango_clade_mapping['seqName'].map(pango_freq_dict)
+    pango_clade_mapping['clade_lif'] = pango_clade_mapping['clade'].map(clade_freq_dict)
+    pango_clade_mapping['pango_time'] = pango_clade_mapping['seqName'].map(pango_time_dict)
+    pango_clade_mapping['clade_time'] = pango_clade_mapping['clade'].map(clade_time_dict)
+
+    pango_clade_mapping = pango_clade_mapping.dropna(subset=['pango_growth', 'clade_growth', 'pango_lif', 'clade_lif'])
+    pango_clade_mapping = pango_clade_mapping.sort_values(['clade_time', 'pango_time'])
+
+    if save_df:
+        pango_clade_mapping.to_csv(path_to_save, index = False)
+
+    return pango_clade_mapping
 
