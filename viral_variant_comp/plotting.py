@@ -11,7 +11,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.colors
 
-from viral_variant_comp.plotting import calculate_mean_fitness
+from viral_variant_comp.estimate import calculate_mean_fitness
 
 ### PLOT viral composition data
 
