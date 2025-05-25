@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from datetime import datetime, timedelta
+from matplotlib.colors import LinearSegmentedColormap, LogNorm
 from matplotlib.dates import MonthLocator, DateFormatter
+from matplotlib.patches import Patch
 import seaborn as sns
 import numpy as np
 import pandas as pd
@@ -77,7 +79,7 @@ def plot_viral_composition(counts, freq = None, composition_estimate = None, var
 
 def plot_viral_composition_dual(counts, freq=None, composition_estimate=None,
                                  var_names=None, y_range=(1e-5, 2),
-                                 show_legend=True, start_date=None):
+                                 show_legend=True, start_date=None, path_to_save=None, title = "Disease Variants in Population"):
 
     base_colors = [
         "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
@@ -101,31 +103,39 @@ def plot_viral_composition_dual(counts, freq=None, composition_estimate=None,
     else:
         time_labels = days
 
-    fig, axes = plt.subplots(2, 1, figsize=(counts.shape[0] // 50 + 4, 10), sharex=True)
+    # Presentation-level font sizes
+    title_fontsize = 24
+    label_fontsize = 20
+    tick_fontsize = 18
+    legend_fontsize = 12
+
+    fig, axes = plt.subplots(2, 1, figsize=(counts.shape[0] // 50 + 6, 12), sharex=True)
 
     for ax_idx, logscale in enumerate([False, True]):
         ax = axes[ax_idx]
 
         for i in range(counts.shape[1]):
-            ax.scatter(time_labels, rel_abund[:, i], s=10, alpha=0.2,
+            ax.scatter(time_labels, rel_abund[:, i], s=30, alpha=0.3,  # bigger points
                        label=var_names[i], color=base_colors[i % 10])
             if freq is not None:
-                ax.plot(time_labels, freq[:, i], color=base_colors[i % 10])
+                ax.plot(time_labels, freq[:, i], color=base_colors[i % 10], linewidth=2)
             if composition_estimate is not None:
                 ax.plot(time_labels, composition_estimate[:, i],
-                        color=brighter_colors[i % 10], linestyle='--')
+                        color=brighter_colors[i % 10], linestyle='--', linewidth=2)
 
-        ax.set_ylabel("Abundancy [%]")
+        ax.set_ylabel("Abundancy [%]", fontsize=label_fontsize)
+        ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
         if logscale:
             ax.set_yscale('log')
             ax.set_ylim(y_range)
-            ax.set_title("Disease Variants in Population (log scale)")
+            ax.set_title(f"{title} (log scale)", fontsize=title_fontsize)
         else:
-            ax.set_title("Disease Variants in Population (linear scale)")
+            ax.set_title(f"{title} (linear scale)", fontsize=title_fontsize)
 
         ax.grid(True)
 
-    axes[-1].set_xlabel("Date" if start_date else "Days")
+    axes[-1].set_xlabel("Date" if start_date else "Days", fontsize=label_fontsize)
+    axes[-1].tick_params(axis='both', which='major', labelsize=tick_fontsize)
 
     # Format x-axis with ticks every 3 months if dates are used
     if start_date:
@@ -134,12 +144,12 @@ def plot_viral_composition_dual(counts, freq=None, composition_estimate=None,
         fig.autofmt_xdate()
 
     if show_legend:
-        if counts.shape[1] > 10:
-            axes[-1].legend(ncol=counts.shape[1] // 10, loc='upper center', bbox_to_anchor=(0.5, -0.25))
-        else:
-            axes[-1].legend(loc='upper center', bbox_to_anchor=(0.5, -0.25))
+        ncol_legend = max(1, counts.shape[1] // 10)
+        axes[-1].legend(ncol=ncol_legend, loc='upper center', bbox_to_anchor=(0.5, -0.35), fontsize=legend_fontsize)
 
     plt.tight_layout()
+    if path_to_save is not None:
+        plt.savefig(path_to_save, dpi=500, format = 'png')
     plt.show()
 
 
@@ -269,6 +279,7 @@ def plot_confidence_intervals(param_df):
     plt.show()
 
 
+
 def plot_confidence_intervals_deviation(param_df, plot_differences=False):
     fig, axes = plt.subplots(2, 2, figsize=(16, 12), gridspec_kw={'height_ratios': [2, 1]})
     gr_df = param_df[param_df.parameter_type == 'growth_rate'].reset_index(drop=True)
@@ -296,9 +307,10 @@ def plot_confidence_intervals_deviation(param_df, plot_differences=False):
             ax.errorbar(i, estimate, yerr=err, fmt='o', capsize=5, color='black')
             ax.plot(i, true_val, 'x', color=color, markersize=10)
 
-        ax.set_xlabel("Index")
-        ax.set_ylabel("Difference" if diff else "Estimated value")
-        ax.set_title(f"{param_label} {'(Δ)' if diff else ''}")
+        ax.set_xlabel("Index", fontsize=14)
+        ax.set_ylabel("Difference" if diff else "Value", fontsize=14)
+        ax.set_title(f"{param_label} {'(Δ)' if diff else ''}", fontsize=16)
+        ax.tick_params(axis='both', labelsize=12)
         ax.grid(True)
 
     def plot_deviation_panel(ax, df, param_label, diff=False):
@@ -325,9 +337,10 @@ def plot_confidence_intervals_deviation(param_df, plot_differences=False):
             ax.plot(i, deviation, 'o', color=point_color, markersize=6, zorder=2)
 
         ax.axhline(0, linestyle='--', color='gray')
-        ax.set_title(f"Deviation {'(Δ)' if diff else ''}: Estimated - True ({param_label})")
-        ax.set_xlabel("Index")
-        ax.set_ylabel("Deviation")
+        ax.set_title(f"Deviation {'(Δ)' if diff else ''}: Estimated - True ({param_label})", fontsize=16)
+        ax.set_xlabel("Index", fontsize=14)
+        ax.set_ylabel("Deviation", fontsize=14)
+        ax.tick_params(axis='both', labelsize=12)
         ax.grid(True)
 
     # Top row: point estimates
@@ -340,23 +353,34 @@ def plot_confidence_intervals_deviation(param_df, plot_differences=False):
 
     # Legend
     legend_elements = [
-        Line2D([0], [0], marker='o', color='black', linestyle='None', label='Estimate inside CI'),
+        Line2D([0], [0], marker='o', color='black', linestyle='None', label='Estimate'),
         Line2D([0], [0], marker='x', color='green', linestyle='None', label='True parameter inside CI', markersize=10),
         Line2D([0], [0], marker='x', color='red', linestyle='None', label='True parameter outside CI', markersize=10),
         Line2D([0], [0], marker='o', color='green', linestyle='None', label='Deviation inside CI'),
         Line2D([0], [0], marker='o', color='red', linestyle='None', label='Deviation outside CI'),
     ]
     
-    fig.legend(handles=legend_elements, loc='upper center', bbox_to_anchor=(0.5, 1.02), ncol=5)
+    fig.legend(
+        handles=legend_elements,
+        loc='upper center',
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=5,
+        fontsize=13,
+        title_fontsize=14
+    )
     plt.suptitle(
         "95% Confidence Intervals and Deviations of " + 
         ("Parameter Differences (Δθ)" if plot_differences else "Parameter Estimates"),
-        fontsize=16
+        fontsize=20, y = 0.95
     )
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
 
-def plot_mse_sampling_size(df, methods=['BFGS', 'stepwiseBFGS']):
+
+def plot_mse_sampling_size(df, methods=['BFGS', 'stepwiseBFGS'], include_reduced=True, dodge_factor=0.05):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
     fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=True)
 
     targets = {
@@ -364,31 +388,49 @@ def plot_mse_sampling_size(df, methods=['BFGS', 'stepwiseBFGS']):
         'lif': 'Log Initial Frequency'
     }
 
-    markers = ['s', 'o','^', 'D', 'v', '*', 'P', 'X']
+    markers = ['s', 'o', '^', 'D', 'v', '*', 'P', 'X']
     colors = [
-    "#a6444f",  # reddish
-    "#57a8b8",  # teal
-    "#80557e",  # purple
-    "#b5d2f2",  # light blue
-    "#d991b4",  # pink
-    "#397398",  # dark blue
-    "#7394c2",  # mid blue
-    "#7a7a7a"]   # gray
+        "#a6444f",  # reddish
+        "#57a8b8",  # teal
+        "#80557e",  # purple
+        "#b5d2f2",  # light blue
+        "#d991b4",  # pink
+        "#397398",  # dark blue
+        "#7394c2",  # mid blue
+        "#7a7a7a"   # gray
+    ]
+
+    # Build method-label mapping: (method, reduced_flag)
+    plot_methods = []
+    for method in methods:
+        plot_methods.append((method, False))  # Normal
+        if include_reduced:
+            plot_methods.append((method, True))  # Reduced
 
     for ax, target in zip(axes, targets.keys()):
-        for idx, method in enumerate(methods):
-            mean_col = f"{target}_mse_mean_{method}"
-            std_col = f"{target}_mse_std_{method}"
+        for idx, (method, reduced) in enumerate(plot_methods):
+            reduced_prefix = 'reduced_' if reduced else ''
+            label_suffix = ' (reduced)' if reduced else ''
 
-            # Plot as unconnected points with error bars
+            mean_col = f"{target}_mse_mean_{reduced_prefix}{method}"
+            std_col = f"{target}_mse_std_{reduced_prefix}{method}"
+
+            if mean_col not in df.columns:
+                continue  # skip missing columns
+
+            # Apply horizontal dodge (log-space)
+            x_base = df['n_samples'].values
+            offset = dodge_factor * (idx - len(plot_methods)/2)
+            x_dodged = x_base * (1 + offset)
+
             ax.errorbar(
-                df['n_samples'],
+                x_dodged,
                 df[mean_col],
                 yerr=df[std_col],
-                fmt=markers[idx % len(markers)],              # point only (no line)
+                fmt=markers[idx % len(markers)],
                 capsize=5,
                 color=colors[idx % len(colors)],
-                label=method
+                label=f"{method}{label_suffix}"
             )
 
         ax.set_xscale('log')
@@ -401,6 +443,7 @@ def plot_mse_sampling_size(df, methods=['BFGS', 'stepwiseBFGS']):
 
     plt.tight_layout()
     plt.show()
+
 
 def plot_mse_n_variants(df, methods=['BFGS', 'stepwiseBFGS']):
     fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=True)
@@ -533,11 +576,11 @@ def plot_count_distribution_over_time(counts_df):
     plt.show()
 
 
-def plot_clade_pango_over_time(pango_clade_mapping_df, color_palette='range', plot_type='growth'):
+def plot_clade_pango_over_time(pango_clade_mapping_df, color_palette='range', plot_type='growth', show_clade_labels=True):
 
     assert plot_type in ['growth', 'lif'], "plot_type must be 'growth' or 'lif'"
 
-    clades_df = pango_clade_mapping_df[['clade', 'clade_growth', 'clade_lif', 'clade_time']].drop_duplicates()    #independent of pango lineages
+    clades_df = pango_clade_mapping_df[['clade', 'clade_growth', 'clade_lif', 'clade_time']].drop_duplicates()
 
     if color_palette == 'range':    
         palette = sns.color_palette('husl', n_colors=len(clades_df))
@@ -546,14 +589,13 @@ def plot_clade_pango_over_time(pango_clade_mapping_df, color_palette='range', pl
         palette = (px.colors.qualitative.Dark24 * (len(clades_df) // 24 + 1))[:len(clades_df)]
         clade_colors = {clade: color for clade, color in zip(clades_df['clade'], palette)}
 
-    # --- Select column names & titles based on plot_type ---
     if plot_type == 'growth':
         clade_y = 'clade_growth'
         pango_y = 'pango_growth'
-        y_title_clade = 'Clade Growth Rate'
-        y_title_pango = 'Pango Growth Rate'
-        hover_label = 'Growth'
-        main_title = "Clade and Pango Lineage Growth Rates Over Time"
+        y_title_clade = 'Clade Fitness'
+        y_title_pango = 'Pango Fitness'
+        hover_label = 'Fitness'
+        main_title = "Clade and Pango Lineage Fitness Over Time"
     else:
         clade_y = 'clade_lif'
         pango_y = 'pango_lif'
@@ -562,31 +604,30 @@ def plot_clade_pango_over_time(pango_clade_mapping_df, color_palette='range', pl
         hover_label = 'Log Init Freq'
         main_title = "Clade and Pango Lineage Log Initial Frequencies Over Time"
 
-    # --- Subplots ---
     fig = make_subplots(
         rows=2, cols=1,
         shared_xaxes=False,
-        subplot_titles=(y_title_clade + " over Time", y_title_pango + " over Time")
+        subplot_titles=(y_title_clade + " over Time", y_title_pango + " over Time"),
+        vertical_spacing=0.15,
     )
 
-    # --- Top plot: Clade ---
     for idx, row in clades_df.iterrows():
         fig.add_trace(
             go.Scatter(
                 x=[row['clade_time']],
                 y=[row[clade_y]],
-                mode='markers+text',
+                mode='markers+text' if show_clade_labels else 'markers',
                 marker=dict(color=clade_colors[row['clade']], size=10),
-                text=[row['clade']],
+                text=[row['clade']] if show_clade_labels else None,
                 textposition='top center',
                 textfont=dict(size=12),
                 name=row['clade'],
-                hovertemplate=f"Clade: {row['clade']}<br>Time: {row['clade_time']:.2f}<br>{hover_label}: {row[clade_y]:.2f}<extra></extra>"
+                hovertemplate=f"Clade: {row['clade']}<br>Time: {row['clade_time']:.2f}<br>{hover_label}: {row[clade_y]:.2f}<extra></extra>",
+                showlegend=not show_clade_labels
             ),
             row=1, col=1
         )
 
-    # --- Bottom plot: Pango ---
     for idx, row in pango_clade_mapping_df.iterrows():
         fig.add_trace(
             go.Scatter(
@@ -601,26 +642,33 @@ def plot_clade_pango_over_time(pango_clade_mapping_df, color_palette='range', pl
             row=2, col=1
         )
 
-    # --- Layout ---
     fig.update_layout(
         height=900,
         title_text=main_title,
-        xaxis_title="Time (Clades)",
+        title_font=dict(size=24),
+        xaxis_title="Mean Time",
         yaxis_title=y_title_clade,
-        xaxis2_title="Time (Pango Lineages)",
+        xaxis2_title="Mean Time",
         yaxis2_title=y_title_pango,
         legend_title_text='Clade',
+        showlegend=not show_clade_labels,
         legend=dict(
             orientation='h',
-            y=-0.25,
+            y=-0.1,
             x=0.5,
             xanchor='center',
             title_text=None
         ),
-        margin=dict(t=100, b=150)
+        font=dict(size=16),
+        margin=dict(t=100, b=80)
     )
 
+    for annotation in fig['layout']['annotations']:
+        annotation['font'] = dict(size=20)
+
     fig.show()
+
+
 
 
 def plot_mean_fitness_time(result_pango, result_clades):
@@ -688,17 +736,267 @@ def plot_pango_lineages_of_single_clade(clade, data_pango, result_pango, pango_c
     #plot_viral_composition_dual(counts_clade, composition_estimate=result_pango['composition_estimate'][:,mask], var_names=var_names_clade, y_range = (1e-5, 2), show_legend=False)
 
 
+### AMINO ACID SUBSTITUTION IMPACT ESTIMATION
+
+def plot_true_vs_est(true_a, est_a):
+    
+    plt.figure(figsize=(6, 6))
+    plt.scatter(true_a, est_a, alpha=0.8)
+    plt.plot([-0.2, 0.2], [-0.2, 0.2], 'k--', label='Ideal')
+    plt.xlabel("True a")
+    plt.ylabel("Estimated a")
+    plt.title("True vs Estimated Amino Acid Impacts")
+    plt.grid(True)
+    
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+def plot_aa_impact_dist_cov(aa_impact, aa_impact_diag_C):
+    """
+    Plot the distribution of amino acid impacts with and without covariance.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+
+    # Plot 1: Diagonal covariance
+    axes[0].hist(aa_impact_diag_C, bins=100, edgecolor='black')
+    axes[0].set_xlabel("Amino Acid Substitution Impact")
+    axes[0].set_ylabel("Frequency")
+    axes[0].set_title("Histogram: Diagonal Covariance")
+    axes[0].set_yscale('log')
+
+    # Plot 2: Full covariance
+    axes[1].hist(aa_impact, bins=100, edgecolor='black')
+    axes[1].set_xlabel("Amino Acid Substitution Impact")
+    axes[1].set_title("Histogram: Full Covariance")
+    axes[1].set_yscale('log')
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_aa_impac_distr_lambdas(lambda_values, aa_impact_C_dict):
+
+    # Compute global x-limits and y-limits
+    all_impacts = np.concatenate([imp['a_est'] for imp in aa_impact_C_dict.values()])    
+    x_min, x_max = np.min(all_impacts), np.max(all_impacts)
+
+    # Compute y-limits based on histogram counts
+    hist_counts = []
+    for impacts in aa_impact_C_dict.values():
+        counts, _ = np.histogram(impacts['a_est'], bins=100)
+        hist_counts.append(counts)
+
+    y_max = np.max(hist_counts) + 100
+
+
+    fig, axes = plt.subplots(1, len(lambda_values), figsize=(6 * len(lambda_values), 5), sharey=True)
+
+    if len(lambda_values) == 1:
+        axes = [axes]  # Ensure axes is always iterable
+
+    for ax, lam in zip(axes, lambda_values):
+        ax.hist(aa_impact_C_dict[lam]['a_est'], bins=100, edgecolor='black')
+        ax.set_xlabel("Amino Acid Substitution Impact")
+        ax.set_title(f"Histogram: lambda = {lam}")
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(1, y_max)  # log scale, so start at 1
+        ax.set_yscale('log')
+
+    axes[0].set_ylabel("Frequency")
+
+    plt.tight_layout()
+    plt.suptitle("Distribution of Amino Acid Substitution Impact for Different Lambda Values", fontsize=16, y=1.04)
+    plt.show()
+
+
+def plot_bootstrap_aa_impact(bootstrap_results_df, top_n, abundancy_threshold=10):
+    """
+    Plot the mean and confidence intervals of amino acid impacts.
+    """
+    bootstrap_results_df = bootstrap_results_df[bootstrap_results_df.n_events > abundancy_threshold]
+    top_results_df = bootstrap_results_df.head(top_n)
+
+    plt.figure(figsize=(10, 6))
+    plt.errorbar(top_results_df['aa_substitution'], top_results_df['mean'], yerr=[top_results_df['mean'] - top_results_df['ci_lower'], top_results_df['ci_upper'] - top_results_df['mean']], fmt='o', capsize=5)
+    plt.xticks(rotation=90)
+    plt.ylabel('Amino Acid Substitution Impact on Fitness')
+    plt.title('Bootstrap Estimates of Amino Acid Impacts with 95% Confidence Intervals')
+    plt.grid(True)
+    plt.show()
+
+def plot_bootstrap_aa_impact_violin(bootstrap_results_df, bootstrap_array, top_n, abundancy_threshold=10):
+
+    colors = [
+        "#a6444f",  # reddish
+        "#57a8b8",  # teal
+        "#80557e",  # purple
+        "#b5d2f2",  # light blue
+        "#d991b4",  # pink
+        "#397398",  # dark blue
+        "#7394c2",  # mid blue
+        "#7a7a7a"   # gray
+    ]
+    
+    bootstrap_results_df = bootstrap_results_df[bootstrap_results_df.n_events > abundancy_threshold]
+    top_results_df = bootstrap_results_df.head(top_n)
+    top_indices = top_results_df.index
+    top_bootstrap_array = bootstrap_array[:, top_indices]
+
+    # Prepare long-form DataFrame for Seaborn
+    aa_labels = top_results_df['aa_substitution'].values
+    plot_df = pd.DataFrame(top_bootstrap_array, columns=aa_labels)
+    plot_df = plot_df.melt(var_name='aa_substitution', value_name='impact_estimate')
+
+    plt.figure(figsize=(max(8, top_n), 6))
+    for i, aa in enumerate(aa_labels):
+        color = colors[i % len(colors)]
+        subset = plot_df[plot_df['aa_substitution'] == aa]
+        sns.violinplot(x='aa_substitution', y='impact_estimate', data=subset, inner=None, color=color)
+
+    sns.stripplot(x='aa_substitution', y='impact_estimate', data=plot_df, color='black', alpha=0.6, size=4)
+
+    plt.xticks(rotation=45, ha='right')
+    plt.xlabel('Amino Acid Substitution')
+    plt.ylabel('Fitness Impact Estimate')
+    plt.title(f'Top {top_n} Amino Acid Substitution Impact Estimates (> {abundancy_threshold} events)')
+    plt.tight_layout()
+    plt.show()
+
+def plot_aa_impact_time(aa_impact_time_df, labels, top_n = 20, abundancy_threshold = 10):
+
+    df = aa_impact_time_df.copy()
+    df = df[df.n_events > abundancy_threshold].head(top_n)
+
+    # Plot settings
+    impact_cols = [f'impact_clades{i+1}' for i in range(4)]
+    events_cols = [f'events_clades{i+1}' for i in range(4)]
+
+    colors = [
+        "#a6444f",  # reddish
+        "#57a8b8",  # teal
+        "#80557e",  # purple
+        "#b5d2f2",  # light blue
+        "#d991b4",  # pink
+        "#397398",  # dark blue
+        "#7394c2",  # mid blue
+        "#7a7a7a"   # gray
+    ]
+
+    x = np.arange(len(df['aa_substitution']))  # x-axis positions
+    width = 0.2  # width of each bar
+
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(15, 6))
+
+    for i in range(4):
+        impacts = df[impact_cols[i]]
+        events = df[events_cols[i]]
+        ax.bar(x + i*width, impacts, width, label=labels[i], color=colors[i])
+
+        # Annotate bars with event counts
+        for xi, yi, ev in zip(x + i*width, impacts, events):
+            ax.text(xi, yi + 0.0003, f'{int(ev)}', ha='center',
+                    va='bottom', fontsize=8)
+
+    # X-axis settings
+    ax.set_xticks(x + 1.5 * width)
+    ax.set_xticklabels(df['aa_substitution'], rotation=45, ha='right')
+
+    # Labels and legend
+    ax.set_ylabel('Estimated Impact')
+    ax.set_title('Impact of Amino Acid Substitutions per Clade Group')
+
+    # Add custom legend entry for n_events annotation explanation
+    handles = [Patch(color=colors[i], label=labels[i]) for i in range(4)]
+    handles.append(Patch(edgecolor='black', facecolor='none', label='1: Number of amino acid substitution events'))
+
+    ax.legend(handles=handles, title='Clade Groups', loc='upper right')
+
+    plt.tight_layout()
+    plt.show()
+
+def plot_loss_different_lambda(objective_vals, n_zero_aa_impact, lambda_values, n_aa_subst, add_inf_lambda=False, inf_lambda=1e6):
+    """
+    Plot the objective values and number of near-zero AA impacts for different lambda values,
+    with a second y-axis for the sparsity level.
+    """
+
+    # Add infinite lambda point if needed
+    if add_inf_lambda:
+        lambda_plot = lambda_values + [inf_lambda]
+        objective_plot = objective_vals + [640.6815785668837]  # max_lambda_loss
+        n_zero_plot = n_zero_aa_impact + [n_aa_subst]  # assume all zero at λ=∞
+    else:
+        lambda_plot = lambda_values
+        objective_plot = objective_vals
+        n_zero_plot = n_zero_aa_impact
+
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+
+    # Plot objective function
+    ax1.plot(lambda_plot, objective_plot, marker='o', label='Objective value', color="#397398")
+    ax1.set_xlabel('Lambda (log scale)')
+    ax1.set_ylabel('Final value of objective function', color="#397398")
+    ax1.set_xscale('log')
+    ax1.tick_params(axis='y', labelcolor="#397398")
+    ax1.grid(True)
+
+    # Plot annotation for λ = ∞
+    if add_inf_lambda:
+        ax1.annotate("λ = ∞", 
+                     xy=(inf_lambda, objective_plot[-1]), 
+                     xytext=(inf_lambda, objective_plot[-1] * 1.1),
+                     arrowprops=dict(arrowstyle='->'))
+
+    # Add second y-axis for number of near-zero impacts
+    ax2 = ax1.twinx()
+    ax2.plot(lambda_plot, n_zero_plot, marker='s', linestyle='--', color="#a6444f", label='Zero impact aa substitutions')
+    ax2.set_ylabel('Number of near-zero impact aa substitutions', color="#a6444f")
+    ax2.tick_params(axis='y', labelcolor="#a6444f")
+
+    # Add legends
+    fig.legend(loc='upper center', bbox_to_anchor=(0.5, 1.12), ncol=2)
+    plt.title('Effect of L1 Regularization on Loss and Sparsity')
+    plt.tight_layout()
+    plt.show()
+
+
+
 
 
 
 ### HELPERS
 
-def plot_heatmap(matrix, title, x_label, y_label):
+def plot_heatmap(matrix, title, x_label, y_label, cmap='custom_cmap', log_coloring=False):
+
+    if cmap == 'custom_cmap':
+        base_colors = [
+            "#80557e",  # purple
+            "#397398",  # dark blue
+            "#57a8b8",  # teal
+            "#7394c2",  # mid blue
+            "#b5d2f2",  # light blue
+        ][::-1]
+        cmap = LinearSegmentedColormap.from_list("custom_cmap", base_colors, N=256)
+    plt.figure(figsize=(8, 6.5))  
 
     mask = (matrix == 0)
 
-    sns.heatmap(matrix, cmap='viridis', mask = mask)
-    plt.title(title)
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
+    if (log_coloring):
+        sns.heatmap(
+            matrix,
+            cmap=cmap,
+            norm=LogNorm(1, vmax=np.nanmax(matrix)),
+            mask=mask
+        )
+    else:
+        sns.heatmap(matrix, cmap=cmap, mask=mask)
+
+    plt.title(title, pad=20, size = 20, loc='center')  # Increase pad for more space above heatmap
+    plt.xlabel(x_label, size = 16)
+    plt.ylabel(y_label, size = 16)
+
+    #plt.tight_layout(rect=[0, 0, 1, 0.95])
+
     plt.show()

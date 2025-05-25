@@ -66,6 +66,7 @@ class BaseCompositionEstimator(ABC):
         self.composition_estimate = None
         self.hessian = None
         self.hess_inv = None
+        self.hess_inv_estimate = None
 
     @abstractmethod
     def fit(self):
@@ -115,7 +116,7 @@ class BFGSCompositionEstimator(BaseCompositionEstimator):
         sum_shifted_exp_logits = np.sum(shifted_exp_logits, axis = 1)
         probs = shifted_exp_logits / sum_shifted_exp_logits[:, np.newaxis]
 
-        grad_s = np.matmul(t_vec, c_t) - np.matmul(N_times_t_vec, probs)
+        grad_s = np.matmul(t_vec, c_t) - np.matmul(N_times_t_vec, probs) 
         grad_o = np.sum(c_t, axis = 0) - np.matmul(N_vec, probs)
 
         log_probs = logits - (np.log(sum_shifted_exp_logits) + max_logits)[:, np.newaxis]
@@ -127,7 +128,7 @@ class BFGSCompositionEstimator(BaseCompositionEstimator):
 
         initial_params = calculate_inital_params(self.n_variants)
     
-        result = minimize(fun = self.neg_log_likelihood_and_grad, x0 = initial_params, args=(self.counts,), method = 'BFGS', jac = True)
+        result = minimize(fun = self.neg_log_likelihood_and_grad, x0 = initial_params, args=(self.counts,), method = 'BFGS', jac = True, options={'disp': False})
         result.x = np.insert(result.x, 0, 0.0)
         result.x = np.insert(result.x, self.n_variants, 0.0)
 
