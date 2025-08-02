@@ -66,6 +66,7 @@ def set_parameters(n_variants, delta_gr_range, rate, freq_entering_variants, s_0
             log_sum_exp = np.exp(logits - max_l)
             avg_s = np.dot(s_vec[0:var_count], log_sum_exp / np.sum(log_sum_exp))
 
+            #s_vec[var_count:var_count + n_new_variants] = avg_s + np.random.normal(loc=0, scale=delta_gr_range/2, size=n_new_variants)
             s_vec[var_count:var_count + n_new_variants] = avg_s + np.random.uniform(0, delta_gr_range, n_new_variants)
             o_vec[var_count:var_count + n_new_variants] = np.log(freq_entering_variants/(1 - freq_entering_variants)) +  np.log(np.sum(log_sum_exp)) + max_l - s_vec[var_count:var_count + n_new_variants] * t
 

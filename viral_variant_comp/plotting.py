@@ -79,16 +79,32 @@ def plot_viral_composition(counts, freq = None, composition_estimate = None, var
 
 def plot_viral_composition_dual(counts, freq=None, composition_estimate=None,
                                  var_names=None, y_range=(1e-5, 2),
-                                 show_legend=True, start_date=None, path_to_save=None, title = "Disease Variants in Population"):
+                                 show_legend=True, start_date=None, path_to_save=None, title = "Disease Variants in Population", color_scheme='colorful'):
 
-    base_colors = [
-        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
-    ]
-    brighter_colors = [
-        "#6baed6", "#ffae6b", "#66c266", "#ff6666", "#c2a5e2",
-        "#b38f87", "#f7a6d8", "#bfbfbf", "#d4e157", "#66ddee"
-    ]
+    #base_colors = [
+    #    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+    #    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
+    #]
+    #brighter_colors = [
+    #    "#6baed6", "#ffae6b", "#66c266", "#ff6666", "#c2a5e2",
+    #    "#b38f87", "#f7a6d8", "#bfbfbf", "#d4e157", "#66ddee"
+    #]
+    if color_scheme == 'reds':
+        colors = [
+            "#a6444f",  # reddish
+            "#57a8b8",  # teal
+            "#80557e",  # purple
+            "#b5d2f2",  # light blue
+            "#d991b4",  # pink
+            "#397398",  # dark blue
+            "#7394c2",  # mid blue
+            "#7a7a7a"   # gray
+        ]
+    elif color_scheme == 'colorful':
+        colors = [
+            "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+            "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
+        ]
 
     n_samples = np.sum(counts, axis=1)
     rel_abund = counts / n_samples[:, np.newaxis]
@@ -116,12 +132,12 @@ def plot_viral_composition_dual(counts, freq=None, composition_estimate=None,
 
         for i in range(counts.shape[1]):
             ax.scatter(time_labels, rel_abund[:, i], s=30, alpha=0.3,  # bigger points
-                       label=var_names[i], color=base_colors[i % 10])
+                       label=var_names[i], color=colors[i % len(colors)])
             if freq is not None:
-                ax.plot(time_labels, freq[:, i], color=base_colors[i % 10], linewidth=2)
+                ax.plot(time_labels, freq[:, i], color=colors[i % len(colors)], linewidth=2)
             if composition_estimate is not None:
                 ax.plot(time_labels, composition_estimate[:, i],
-                        color=brighter_colors[i % 10], linestyle='--', linewidth=2)
+                        color=colors[i % len(colors)], linestyle='--', linewidth=2)
 
         ax.set_ylabel("Abundancy [%]", fontsize=label_fontsize)
         ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
@@ -242,7 +258,7 @@ def plot_confidence_intervals(param_df):
     growth_rate_range = (np.min(gr_df.parameter_estimate) - 0.5 * max_gr, max_gr + 0.5 * max_gr)
 
     for i in range(len(gr_df.parameter_estimate)):
-        color = "green" if gr_df.ci_lower[i] <= gr_df.true_parameter[i] <= gr_df.ci_upper[i] else "red"
+        color = "#6c9a8b" if gr_df.ci_lower[i] <= gr_df.true_parameter[i] <= gr_df.ci_upper[i] else "#a6444f"
         axes[0].errorbar(i, gr_df.parameter_estimate[i], yerr=gr_df.standard_error[i], fmt='o', capsize=5, color='black')
         axes[0].plot(i, gr_df.true_parameter[i], 'x', color=color, markersize=10, label='True' if i == 0 else "")
 
@@ -270,8 +286,8 @@ def plot_confidence_intervals(param_df):
 
     legend_elements = [
             Line2D([0], [0], marker='o', color='black', linestyle='None', label='Parameter estimate'),
-            Line2D([0], [0], marker='x', color='green', linestyle='None', label='True parameter inside CI', markersize=10),
-            Line2D([0], [0], marker='x', color='red', linestyle='None', label='True parameter outside CI', markersize=10)
+            Line2D([0], [0], marker='x', color="#6c9a8b", linestyle='None', label='True parameter inside CI', markersize=10),
+            Line2D([0], [0], marker='x', color="#a6444f", linestyle='None', label='True parameter outside CI', markersize=10)
         ]
     fig.legend(handles=legend_elements, loc="upper right", ncol=1)
 
@@ -303,7 +319,7 @@ def plot_confidence_intervals_deviation(param_df, plot_differences=False):
                 ci_low = df.ci_lower.iloc[i]
                 ci_up = df.ci_upper.iloc[i]
 
-            color = "green" if ci_low <= true_val <= ci_up else "red"
+            color = "#6c9a8b" if ci_low <= true_val <= ci_up else "#a6444f"
             ax.errorbar(i, estimate, yerr=err, fmt='o', capsize=5, color='black')
             ax.plot(i, true_val, 'x', color=color, markersize=10)
 
@@ -331,7 +347,7 @@ def plot_confidence_intervals_deviation(param_df, plot_differences=False):
                 ci_up = df.ci_upper.iloc[i]
                 true_val = df.true_parameter.iloc[i]
 
-            point_color = "green" if ci_low <= true_val <= ci_up else "red"
+            point_color = "#6c9a8b" if ci_low <= true_val <= ci_up else "#a6444f"
 
             ax.errorbar(i, 0, yerr=err, capsize=5, color='black', zorder=1)
             ax.plot(i, deviation, 'o', color=point_color, markersize=6, zorder=2)
@@ -354,10 +370,10 @@ def plot_confidence_intervals_deviation(param_df, plot_differences=False):
     # Legend
     legend_elements = [
         Line2D([0], [0], marker='o', color='black', linestyle='None', label='Estimate'),
-        Line2D([0], [0], marker='x', color='green', linestyle='None', label='True parameter inside CI', markersize=10),
-        Line2D([0], [0], marker='x', color='red', linestyle='None', label='True parameter outside CI', markersize=10),
-        Line2D([0], [0], marker='o', color='green', linestyle='None', label='Deviation inside CI'),
-        Line2D([0], [0], marker='o', color='red', linestyle='None', label='Deviation outside CI'),
+        Line2D([0], [0], marker='x', color="#6c9a8b", linestyle='None', label='True parameter inside CI', markersize=10),
+        Line2D([0], [0], marker='x', color="#a6444f", linestyle='None', label='True parameter outside CI', markersize=10),
+        Line2D([0], [0], marker='o', color="#6c9a8b", linestyle='None', label='Deviation inside CI'),
+        Line2D([0], [0], marker='o', color="#a6444f", linestyle='None', label='Deviation outside CI'),
     ]
     
     fig.legend(
@@ -445,53 +461,8 @@ def plot_mse_sampling_size(df, methods=['BFGS', 'stepwiseBFGS'], include_reduced
     plt.show()
 
 
-def plot_mse_n_variants(df, methods=['BFGS', 'stepwiseBFGS']):
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=True)
-
-    targets = {
-        'gr': 'Growth Rate',
-        'lif': 'Log Initial Frequency'
-    }
-
-    markers = ['s', 'o', '^', 'D', 'v', '*', 'P', 'X']
-    colors = [
-    "#a6444f",  # reddish
-    "#57a8b8",  # teal
-    "#80557e",  # purple
-    "#b5d2f2",  # light blue
-    "#d991b4",  # pink
-    "#397398",  # dark blue
-    "#7394c2",  # mid blue
-    "#7a7a7a"]   # gray
-
-    for ax, target in zip(axes, targets.keys()):
-        for idx, method in enumerate(methods):
-            mean_col = f"{target}_mse_mean_{method}"
-            std_col = f"{target}_mse_std_{method}"
-
-            ax.errorbar(
-                df['n_variants_real_mean'],
-                df[mean_col],
-                yerr=df[std_col],
-                fmt=markers[idx % len(markers)],
-                capsize=5,
-                color=colors[idx % len(colors)],
-                label=method
-            )
-
-        ax.set_xscale('log')
-        ax.set_yscale('log')
-        ax.set_title(f"Δ{targets[target]} MSE vs. Number of Variants")
-        ax.set_xlabel("Number of variants")
-        ax.set_ylabel("Mean Squared Error")
-        ax.grid(True)
-        ax.legend(title="Estimation Method")
-
-    plt.tight_layout()
-    plt.show()
-
-def plot_mse_variant_appearance(df, methods=['BFGS', 'stepwiseBFGS'], x_col= 'new_var_rate'):
-    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=True)
+def plot_mse_n_variants(df, methods=['BFGS', 'stepwiseBFGS'], dodge_width = 0.05, reduced_variants = False):
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7), sharex=True)
 
     targets = {
         'gr': 'Growth Rate',
@@ -512,11 +483,22 @@ def plot_mse_variant_appearance(df, methods=['BFGS', 'stepwiseBFGS'], x_col= 'ne
 
     for ax, target in zip(axes, targets.keys()):
         for idx, method in enumerate(methods):
-            mean_col = f"{target}_mse_mean_{method}"
-            std_col = f"{target}_mse_std_{method}"
+        
+            if reduced_variants:
+                mean_col = f"{target}_mse_mean_reduced_{method}"
+                std_col = f"{target}_mse_std_reduced_{method}"
+            else:
+                mean_col = f"{target}_mse_mean_{method}"
+                std_col = f"{target}_mse_std_{method}"
+
+            # Apply dodge in log-space
+            log_x = np.log10(df['n_variants_requested'])
+            dodge_offset = (idx - (len(methods)-1)/2) * dodge_width
+            log_x_dodged = log_x + dodge_offset
+            x_dodged = 10 ** log_x_dodged  # convert back to linear scale
 
             ax.errorbar(
-                df[x_col],
+                x_dodged,
                 df[mean_col],
                 yerr=df[std_col],
                 fmt=markers[idx % len(markers)],
@@ -527,18 +509,80 @@ def plot_mse_variant_appearance(df, methods=['BFGS', 'stepwiseBFGS'], x_col= 'ne
 
         ax.set_xscale('log')
         ax.set_yscale('log')
-        if(x_col == 'mean_entropy_mean'):
-            ax.set_title(f"Δ{targets[target]} MSE vs. Variant Diversity")
-            ax.set_xlabel("Mean Entropy of variant compostition (freq.)")
+        ax.set_title(f"Δ {targets[target]} MSE vs. Number of Variants", size = 18)
+        ax.set_xlabel("Number of variants", fontsize = 14)
+        if reduced_variants:
+            ax.set_ylabel("Mean Squared Error (variants > 100 counts)", fontsize = 14)
         else:
-            ax.set_title(f"Δ{targets[target]} MSE vs. Variant Appearance Rate")
-            ax.set_xlabel("Variant appearance rate (per day)")
-        ax.set_ylabel("Mean Squared Error")
+            ax.set_ylabel("Mean Squared Error", fontsize = 14)
         ax.grid(True)
-        ax.legend(title="Estimation Method")
+        ax.legend(title="Estimation Method", fontsize=13, title_fontsize=14)
 
     plt.tight_layout()
     plt.show()
+
+
+def plot_mse_variant_appearance(df, methods=['BFGS', 'stepwiseBFGS'], x_col='new_var_rate', dodge_width=0.03, reduced_variants=False):
+    fig, axes = plt.subplots(1, 2, figsize=(16, 7), sharex=True)
+
+    targets = {
+        'gr': 'Growth Rate',
+        'lif': 'Log Initial Frequency'
+    }
+
+    markers = ['s', 'o', '^', 'D', 'v', '*', 'P', 'X']
+    colors = [
+        "#a6444f",  # reddish
+        "#57a8b8",  # teal
+        "#80557e",  # purple
+        "#b5d2f2",  # light blue
+        "#d991b4",  # pink
+        "#397398",  # dark blue
+        "#7394c2",  # mid blue
+        "#7a7a7a"   # gray
+    ]
+
+    for ax, target in zip(axes, targets.keys()):
+        for idx, method in enumerate(methods):
+            if reduced_variants:
+                mean_col = f"{target}_mse_mean_reduced_{method}"
+                std_col = f"{target}_mse_std_reduced_{method}"
+            else:
+                mean_col = f"{target}_mse_mean_{method}"
+                std_col = f"{target}_mse_std_{method}"
+
+            # Apply dodge in log-space
+            log_x = np.log10(df[x_col])
+            dodge_offset = (idx - (len(methods)-1)/2) * dodge_width
+            log_x_dodged = log_x + dodge_offset
+            x_dodged = 10 ** log_x_dodged  # convert back to linear scale
+
+            ax.errorbar(
+                x_dodged,
+                df[mean_col],
+                yerr=df[std_col],
+                fmt=markers[idx % len(markers)],
+                capsize=5,
+                color=colors[idx % len(colors)],
+                label=method
+            )
+
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        if x_col == 'mean_entropy_mean':
+            ax.set_title(f"Δ {targets[target]} MSE vs. Variant Diversity", fontsize=16)
+            ax.set_xlabel("Mean Entropy of variant composition (freq.)", fontsize=14)
+        else:
+            ax.set_title(f"Δ {targets[target]} MSE vs. Variant Appearance Rate", fontsize=16)
+            ax.set_xlabel("Variant appearance rate (per day)", fontsize=14)
+        
+        ax.set_ylabel("Mean Squared Error", fontsize=14)
+        ax.grid(True)
+        ax.legend(title="Estimation Method", fontsize=13, title_fontsize=14)
+
+    plt.tight_layout()
+    plt.show()
+
 
 
 ### PLOTS COVID DATA
@@ -692,35 +736,40 @@ def plot_mean_fitness_time(result_pango, result_clades):
     delta_add = 0.001
 
     # Plotting
-    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(15, 8), sharex='col')
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(15, 8), sharex=False)
 
     # Row 1: Mean fitness
-    axes[0, 0].plot(time, pango_mean_fitness, color='tab:blue')
+    axes[0, 0].plot(time, pango_mean_fitness, color="#397398", linewidth=2.5)
     axes[0, 0].set_ylabel('Mean Fitness')
+    axes[0, 0].set_xlabel('Time')
     axes[0, 0].set_title('Pango Mean Fitness')
     axes[0, 0].set_ylim(mf_min - mf_add, mf_max + mf_add)
 
-    axes[0, 1].plot(time, clade_mean_fitness, color='tab:green')
+    axes[0, 1].plot(time, clade_mean_fitness, color="#6c9a8b", linewidth=2.5)
     axes[0, 1].set_ylabel('Mean Fitness')
+    axes[0, 1].set_xlabel('Time')
     axes[0, 1].set_title('Clade Mean Fitness')
     axes[0, 1].set_ylim(mf_min - mf_add, mf_max + mf_add)
 
     # Row 2: ΔFitness
-    axes[1, 0].plot(delta_time, delta_pango, color='tab:blue')
+    axes[1, 0].plot(delta_time, delta_pango, color="#397398", linewidth=2.5)
     axes[1, 0].set_xlabel('Time')
-    axes[1, 0].set_ylabel('ΔFitness')
+    axes[1, 0].set_ylabel('Δ Fitness')
     axes[1, 0].set_title('Δ Pango Mean Fitness')
     axes[1, 0].set_ylim(delta_min - delta_add, delta_max + delta_add)
 
-    axes[1, 1].plot(delta_time, delta_clade, color='tab:green')
+    axes[1, 1].plot(delta_time, delta_clade, color="#6c9a8b", linewidth=2.5)
     axes[1, 1].set_xlabel('Time')
-    axes[1, 1].set_ylabel('ΔFitness')
+    axes[1, 1].set_ylabel('Δ Fitness')
     axes[1, 1].set_title('Δ Clade Mean Fitness')
     axes[1, 1].set_ylim(delta_min - delta_add, delta_max + delta_add)
 
     # Styling
     for ax in axes.flat:
         ax.grid(True)
+        ax.set_title(ax.get_title(), fontsize=16)
+        ax.set_ylabel(ax.get_ylabel(), fontsize=14)
+        ax.set_xlabel(ax.get_xlabel(), fontsize=14)
 
     plt.tight_layout()
     plt.show()
@@ -952,7 +1001,7 @@ def plot_loss_different_lambda(objective_vals, n_zero_aa_impact, lambda_values, 
     # Add second y-axis for number of near-zero impacts
     ax2 = ax1.twinx()
     ax2.plot(lambda_plot, n_zero_plot, marker='s', linestyle='--', color="#a6444f", label='Zero impact aa substitutions')
-    ax2.set_ylabel('Number of near-zero impact aa substitutions', color="#a6444f")
+    ax2.set_ylabel('Number of zero impact aa substitutions', color="#a6444f")
     ax2.tick_params(axis='y', labelcolor="#a6444f")
 
     # Add legends

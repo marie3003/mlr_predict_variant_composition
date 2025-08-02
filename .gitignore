@@ -31,6 +31,7 @@ data/counts_5var_180day.csv
 data/posterior_50var_1000days_1000samples.pkl
 data/simulated_counts
 data/simulated_counts.zip
+data/covid_results/inv_hessian_window300_pivotA5.txt
 
 # All dictionary data
 *.npz
