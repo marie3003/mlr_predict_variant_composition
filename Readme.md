@@ -1,0 +1,15 @@
+# Learning Fitness Dynamics of SARS-CoV-2: Stepwise Multinomial Logistic Regression to estimate fitness parameters of viral variants
+
+Understanding the fitness dynamics of SARS-CoV-2 variants is critical for tracking viral evolution and informing public health decisions. In this work, we present a stepwise maximum likelihood framework based on Multinomial Logistic Regression (MLR) to estimate the fitness of viral variants from genomic surveillance data. Our approach employs the Broyden-Fletcher-Goldfarb-Shanno (BFGS) optimization algorithm in a sliding window fashion, enabling the scalable inference of variant fitness across thousands of lineages over extended time periods. Through simulation experiments, we validate our method against existing tools such as \texttt{evofr}, demonstrating superior accuracy and computational efficiency, with a 300-fold reduction in runtime. Applying our approach to SARS-CoV-2 sequencing data from the United States, we recover fitness trajectories for both Nextstrain clades and Pango lineages. These trajectories reveal consistent increases in fitness over time and capture major epidemiological shifts, including the emergence of Omicron. We further link fitness changes to amino acid substitutions, identifying key mutations such as \emph{S:F486P} with strong impacts on viral fitness and tracing their phase-specific relevance throughout the pandemic. Our results show that stepwise optimization is a powerful and efficient method for large-scale fitness estimation and downstream molecular analyses. It offers a computationally efficient tool for real-time genomic surveillance and evolutionary insights into viral adaptation.
+
+## Notebooks containing different steps of the analysis
+1. `estimate_simulated_data.ipynb`: Notebook to simulate datasets of variable size, by choosing a seed, a number of variants, the rate of variant appearance, the number of samples and other parameters. Estiamtion is then run on the simulated data set with the global and stepwise BFGS algorithm.
+2. `compare_evofr.ipynb`: Comparison of global and stepwise BFGS algorithm with evofr on simulated data.
+3. `evaluate_estimation_methods.ipynb`: Summary error statistics for varying number of variants, variant appearance rate and sampling size.
+4. `covid_data.ipynb`: Apply algorithm to SARS-CoV-2 data (US from January 2020 to April 2025). Estimation is first done on a Nextstrain Clade resolution and then repeated for Pango Lineages. Resulting fitness estimates are compared and the fitness development over time is investigated.
+5. `effect_aa_substitutions_fitness.ipynb`: Estimation of the impact of amino acid substitutions on fitness. A bootstrapping approach is applied to estimate the impact of substitutions over the whole course of the pandemic. This is followed by an analysis comparing amino acid substitution impact in different time periods of the pandemic.
+
+The analysis is summarized in the `AnalysisSummary.pdf` containing a extensive description of the used methods and obtained results.
+
+
+

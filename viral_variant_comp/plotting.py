@@ -583,6 +583,84 @@ def plot_mse_variant_appearance(df, methods=['BFGS', 'stepwiseBFGS'], x_col='new
     plt.tight_layout()
     plt.show()
 
+def plot_mse_sampling_size_multi(dataframes, labels, methods=['BFGS', 'stepwiseBFGS'], dodge_factor=0.05):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    assert len(dataframes) == len(labels), "Number of dataframes and labels must match."
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6), sharex=True)
+
+    targets = {
+        'gr': 'Growth Rate',
+        'lif': 'Log. Initial Frequency'
+    }
+
+    markers = ['s', 'o', '^', 'D', 'v', '*', 'P', 'X']
+    colors = [
+        "#a6444f", "#57a8b8", "#80557e", "#b5d2f2",
+        "#d991b4", "#397398", "#7394c2", "#7a7a7a"
+    ]
+
+    # Build plotting tasks: (df_idx, method, reduced_flag, label)
+    plot_tasks = []
+
+    # First add non-reduced methods of df_idx == 0 in order (BFGS first)
+    df_idx = 0
+    label = labels[df_idx]
+    for method in methods:
+        plot_tasks.append((df_idx, method, False, label))  # non-reduced first
+
+    # Then add reduced methods for all dataframes (BFGS first, then stepwiseBFGS)
+    for df_idx, label in enumerate(labels):
+        for method in methods:
+            plot_tasks.append((df_idx, method, True, label))  # reduced versions
+
+    # Plotting loop
+    for ax, target in zip(axes, targets.keys()):
+        for idx, (df_idx, method, reduced, label_suffix) in enumerate(plot_tasks):
+            df = dataframes[df_idx]
+
+            reduced_prefix = 'reduced_' if reduced else ''
+            mean_col = f"{target}_mse_mean_{reduced_prefix}{method}"
+            std_col = f"{target}_mse_std_{reduced_prefix}{method}"
+
+            if mean_col not in df.columns:
+                continue  # skip missing columns
+
+            # Apply horizontal dodge (log-space)
+            x_base = df['n_samples'].values
+            offset = dodge_factor * (idx - len(plot_tasks)/2)
+            x_dodged = x_base * (1 + offset)
+
+            # Label logic
+            if reduced:
+                label_text = f"{method} ({label_suffix})"
+            else:
+                label_text = f"{method}"
+
+            ax.errorbar(
+                x_dodged,
+                df[mean_col],
+                yerr=df[std_col],
+                fmt=markers[idx % len(markers)],
+                capsize=5,
+                color=colors[idx % len(colors)],
+                label=label_text
+            )
+
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_title(f"Δ {targets[target]} MSE vs. Sampling Size", size = 18)
+        ax.set_xlabel("Number of samples per day", size = 14)
+        ax.set_ylabel("Mean Squared Error", size = 14)
+        ax.grid(True)
+        ax.legend(title="Estimation Method & Filter")
+
+    plt.tight_layout()
+    plt.show()
+
+
 
 
 ### PLOTS COVID DATA
@@ -898,6 +976,7 @@ def plot_bootstrap_aa_impact_violin(bootstrap_results_df, bootstrap_array, top_n
     plot_df = plot_df.melt(var_name='aa_substitution', value_name='impact_estimate')
 
     plt.figure(figsize=(max(8, top_n), 6))
+    plt.axhline(y=0, color='gray', linestyle='--', linewidth=1, zorder = 0)
     for i, aa in enumerate(aa_labels):
         color = colors[i % len(colors)]
         subset = plot_df[plot_df['aa_substitution'] == aa]
@@ -905,10 +984,11 @@ def plot_bootstrap_aa_impact_violin(bootstrap_results_df, bootstrap_array, top_n
 
     sns.stripplot(x='aa_substitution', y='impact_estimate', data=plot_df, color='black', alpha=0.6, size=4)
 
-    plt.xticks(rotation=45, ha='right')
-    plt.xlabel('Amino Acid Substitution')
-    plt.ylabel('Fitness Impact Estimate')
-    plt.title(f'Top {top_n} Amino Acid Substitution Impact Estimates (> {abundancy_threshold} events)')
+    plt.xticks(rotation=45, ha='right', fontsize=14)
+    plt.yticks(fontsize=14)
+    plt.xlabel('Amino Acid Substitution', fontsize=16)
+    plt.ylabel('Fitness Impact Estimate', fontsize=16)
+    plt.title(f'Top {top_n} Amino Acid Substitution Impact Estimates (> {abundancy_threshold} events)', fontsize= 18)
     plt.tight_layout()
     plt.show()
 
@@ -946,21 +1026,24 @@ def plot_aa_impact_time(aa_impact_time_df, labels, top_n = 20, abundancy_thresho
         # Annotate bars with event counts
         for xi, yi, ev in zip(x + i*width, impacts, events):
             ax.text(xi, yi + 0.0003, f'{int(ev)}', ha='center',
-                    va='bottom', fontsize=8)
+                    va='bottom', fontsize=10)
 
     # X-axis settings
     ax.set_xticks(x + 1.5 * width)
     ax.set_xticklabels(df['aa_substitution'], rotation=45, ha='right')
 
+
     # Labels and legend
-    ax.set_ylabel('Estimated Impact')
-    ax.set_title('Impact of Amino Acid Substitutions per Clade Group')
+    ax.set_ylabel('Estimated Impact', fontsize=14)
+    ax.set_xlabel('Amino Acid Substitution', fontsize=14)
+
+    ax.set_title('Impact of Amino Acid Substitutions per Phase of the Pandemic', fontsize=16)
 
     # Add custom legend entry for n_events annotation explanation
     handles = [Patch(color=colors[i], label=labels[i]) for i in range(4)]
     handles.append(Patch(edgecolor='black', facecolor='none', label='1: Number of amino acid substitution events'))
 
-    ax.legend(handles=handles, title='Clade Groups', loc='upper right')
+    ax.legend(handles=handles, title='Clade Groups', loc='upper right', fontsize = 12, title_fontsize=13)
 
     plt.tight_layout()
     plt.show()
@@ -985,8 +1068,8 @@ def plot_loss_different_lambda(objective_vals, n_zero_aa_impact, lambda_values, 
 
     # Plot objective function
     ax1.plot(lambda_plot, objective_plot, marker='o', label='Objective value', color="#397398")
-    ax1.set_xlabel('Lambda (log scale)')
-    ax1.set_ylabel('Final value of objective function', color="#397398")
+    ax1.set_xlabel('Lambda (log scale)', fontsize = 13)
+    ax1.set_ylabel('Final value of objective function', color="#397398", fontsize = 13)
     ax1.set_xscale('log')
     ax1.tick_params(axis='y', labelcolor="#397398")
     ax1.grid(True)
@@ -996,17 +1079,17 @@ def plot_loss_different_lambda(objective_vals, n_zero_aa_impact, lambda_values, 
         ax1.annotate("λ = ∞", 
                      xy=(inf_lambda, objective_plot[-1]), 
                      xytext=(inf_lambda, objective_plot[-1] * 1.1),
-                     arrowprops=dict(arrowstyle='->'))
+                     arrowprops=dict(arrowstyle='->'), fontsize = 13)
 
     # Add second y-axis for number of near-zero impacts
     ax2 = ax1.twinx()
     ax2.plot(lambda_plot, n_zero_plot, marker='s', linestyle='--', color="#a6444f", label='Zero impact aa substitutions')
-    ax2.set_ylabel('Number of zero impact aa substitutions', color="#a6444f")
+    ax2.set_ylabel('Number of zero impact aa substitutions', color="#a6444f", fontsize = 13)
     ax2.tick_params(axis='y', labelcolor="#a6444f")
 
     # Add legends
     fig.legend(loc='upper center', bbox_to_anchor=(0.5, 1.12), ncol=2)
-    plt.title('Effect of L1 Regularization on Loss and Sparsity')
+    plt.title('Effect of L1 Regularization on Loss and Sparsity', fontsize = 14)
     plt.tight_layout()
     plt.show()
 

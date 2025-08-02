@@ -7,31 +7,6 @@ from scipy.linalg import cholesky
 from matplotlib import pyplot as plt
 import seaborn as sns
 
-
-################# SIMULATE TEST DATA #################
-def simulate_aa_substitution_data(n_variants, n_aachanges, percent_non0impact_aa=0.5, noise_level = 0.1):
-    """
-    Simulate a dataset of amino acid substitutions with a given number of variants and changes.
-    """
-
-    np.random.seed(0)
-    true_a = np.zeros(n_aachanges)
-    nonzero_indices = np.random.choice(n_aachanges, size=int(n_aachanges * percent_non0impact_aa), replace=False)
-    true_a[nonzero_indices] = np.random.normal(loc=0, scale=0.1, size=len(nonzero_indices))
-
-    W = (np.random.rand(n_variants, n_aachanges) > 0.75).astype(float)
-
-    # Assume diagonal covariance for simplicity --> C must be positive semidefinite
-    C = np.diag(np.random.uniform(0, 0.1, size=n_variants))     # noise in the same range as impact of aa substitution
-    noise = np.random.multivariate_normal(np.zeros(n_variants), C)
-
-    delta_s = W @ true_a + noise_level *  noise
-
-    return {'true_a': true_a,
-            'W': W,
-            'delta_s': delta_s,
-            'C': C}
-
 ################# Prepare Covid Data #################
 
 def create_substitutions_df(consensus_seq_df):
@@ -275,6 +250,11 @@ def calculate_impact_estimates_timesplit(consensus_seq_df, hess_inv, lineage_nam
 
     return aa_impact_time_df, lineages_list
 
+################## Evaluate Results #################
+def get_most_impactful_substitutions(aa_impact_vec, n, substitutions_df, lineage_info_df, abundancy_threshold = 10):
+    aa_impact_df = pd.DataFrame({'aa_substitution': substitutions_df.columns, 'gr_impact': aa_impact_vec, "n_events": substitutions_df.loc[lineage_info_df.lineage.values].sum(axis = 0)})
+    aa_impact_df = aa_impact_df[aa_impact_df.n_events > abundancy_threshold]
+    return aa_impact_df.sort_values(by='gr_impact', ascending=False).head(n)
 
 
 ################# HELPERS #################
