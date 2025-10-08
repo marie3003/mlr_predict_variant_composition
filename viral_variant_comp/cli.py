@@ -196,11 +196,11 @@ def to_nextstrain_format(
         "location": locations,
         "dates": [date.strftime("%Y-%m-%d") for date in dates],
         "variants": variant_names.tolist(),
-        "variantDisplayNames": variant_display_names,
+        "variantDisplayNames": [[name, variant_display_names.get(name, name)] for name in variant_names],  # Array format for visualization
         "pivot": pivot_variant or (variant_names[0] if len(variant_names) > 0 else None),
         "updated": updated,
         "forecast_dates": [date.strftime("%Y-%m-%d") for date in dates][-7:],  # Last 7 dates as forecast dates as an example
-        "variantColors": {name: f"#{hash(name) % 0xFFFFFF:06x}" for name in variant_names},  # Generate simple colors for each variant
+        "variantColors": [[name, f"#{hash(name) % 0xFFFFFF:06x}"] for name in variant_names],  # Array format for visualization
     }
 
     n_variants = len(variant_names)
@@ -242,12 +242,12 @@ def to_nextstrain_format(
                 if freq_se == 0:
                     freq_se = 1e-6  # Small value to ensure we have some CI
 
-                freq_lower_50 = max(0, freq_value - 0.67 * freq_se)
-                freq_upper_50 = min(1, freq_value + 0.67 * freq_se)
-                freq_lower_80 = max(0, freq_value - 1.28 * freq_se)
-                freq_upper_80 = min(1, freq_value + 1.28 * freq_se)
-                freq_lower_95 = max(0, freq_value - 1.96 * freq_se)
-                freq_upper_95 = min(1, freq_value + 1.96 * freq_se)
+                freq_lower_50 = np.clip(freq_value - 0.67 * freq_se, 0, 1)
+                freq_upper_50 = np.clip(freq_value + 0.67 * freq_se, 0, 1)
+                freq_lower_80 = np.clip(freq_value - 1.28 * freq_se, 0, 1)
+                freq_upper_80 = np.clip(freq_value + 1.28 * freq_se, 0, 1)
+                freq_lower_95 = np.clip(freq_value - 1.96 * freq_se, 0, 1)
+                freq_upper_95 = np.clip(freq_value + 1.96 * freq_se, 0, 1)
 
                 data.append({
                     "location": location,
@@ -317,8 +317,17 @@ def to_nextstrain_format(
             })
             # HDI for growth advantage (assuming normal distribution of growth_rate)
             for hdi_level, multiplier in [(0.5, 0.67), (0.8, 1.28), (0.95, 1.96)]:
-                lower_bound = np.exp(growth_rates[i] - multiplier * growth_rate_std_errors_full[i])
-                upper_bound = np.exp(growth_rates[i] + multiplier * growth_rate_std_errors_full[i])
+                # Calculate bounds with overflow protection
+                lower_log_val = growth_rates[i] - multiplier * growth_rate_std_errors_full[i]
+                upper_log_val = growth_rates[i] + multiplier * growth_rate_std_errors_full[i]
+                
+                # Apply bounds to prevent overflow in exp function
+                lower_log_val = np.clip(lower_log_val, -700, 700)  # Safe range for exp
+                upper_log_val = np.clip(upper_log_val, -700, 700)  # Safe range for exp
+                
+                lower_bound = np.exp(lower_log_val)
+                upper_bound = np.exp(upper_log_val)
+                
                 data.append({
                     "location": location,
                     "site": "ga",
@@ -336,7 +345,7 @@ def to_nextstrain_format(
                     "ps": f"HDI_{int(hdi_level*100)}_upper",
                 })
         # Process daily raw frequencies (empirical frequencies from raw counts)
-        # These should follow the real Nextstrain format without ps field
+        # Include 'ps' field for visualization compatibility
         df_counts = pd.read_csv(csv_path)
         df_counts["date"] = pd.to_datetime(df_counts["date"])
         df_counts_pivot = df_counts.groupby(["date", grouping_col])["count"].sum().unstack(fill_value=0)
@@ -351,9 +360,11 @@ def to_nextstrain_format(
                     "variant": variant,
                     "date": date.strftime("%Y-%m-%d"),
                     "value": raw_freq_value,
+                    "ps": "median",
                 })
 
         # Process weekly raw frequencies (empirical frequencies from raw counts)
+        # Include 'ps' field for visualization compatibility
         for date, row in weekly_raw_frequencies.iterrows():
             for variant in weekly_raw_frequencies.columns:
                 raw_freq_value = row[variant]
@@ -364,6 +375,7 @@ def to_nextstrain_format(
                     "variant": variant,
                     "date": date.strftime("%Y-%m-%d"),
                     "value": raw_freq_value,
+                    "ps": "median",
                 })
 
 
