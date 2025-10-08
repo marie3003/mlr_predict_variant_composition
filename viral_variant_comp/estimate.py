@@ -2,8 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
-import evofr as ef
-from viral_variant_comp.simulate_count_data import calculate_frequencies, reorder_variants, prepare_count_data_evofr, create_count_data
+from viral_variant_comp.simulate_count_data import calculate_frequencies, reorder_variants, create_count_data
 
 from abc import ABC, abstractmethod
 
@@ -250,39 +249,7 @@ class StepwiseBFGSCompositionEstimator(BaseCompositionEstimator):
         self._postprocess_estimates()
 
 
-class EvofrCompositionEstimator(BaseCompositionEstimator):
-    def __init__(self, counts, iterations=300000, learning_rate=4e-3, generation_time = 1):
-        super().__init__(counts)
-        self.iterations = iterations
-        self.learning_rate = learning_rate
-        self.generation_time = generation_time
 
-    def fit(self):
-
-        counts_df = prepare_count_data_evofr(self.counts)
-
-        # need to reorder variants because evofr always chooses last element in variant vector as pivot
-        variant_names = [f"variant_{i+1}" for i in range(counts_df.variant.unique().shape[0]-1)]
-        variant_names.append('variant_0')
-        variant_frequencies = ef.VariantFrequencies(counts_df, var_names=variant_names)    #pivot="variant_0"
-
-        mlr = ef.MultinomialLogisticRegression(tau=self.generation_time) # tau: average generation time (1 day)
-        inference_method = ef.InferMAP(iters = self.iterations, lr = self.learning_rate)
-        posterior = inference_method.fit(mlr, variant_frequencies)
-
-        #forecast_L = 50
-        #posterior.samples = mlr.forecast_frequencies(posterior.samples, forecast_L)
-
-        o_vec = np.median(posterior.samples['beta'][:,0,:], axis = 0)
-        o_vec = np.concatenate(([o_vec[-1]], o_vec[:-1]))
-
-        s_vec = np.median(posterior.samples['beta'][:,1,:], axis = 0)
-        s_vec = np.concatenate(([s_vec[-1]], s_vec[:-1]))
-
-        self.growth_rate_estimate = s_vec
-        self.log_init_freq_estimate = o_vec
-
-        self._postprocess_estimates()
 
 
 
