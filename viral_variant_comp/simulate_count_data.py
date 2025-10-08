@@ -151,7 +151,7 @@ def reorder_variants_realdata(counts, var_names):
 def preprocess_covid_data(counts_df, grouping_col = 'nextstrainClade'):
     counts_df['date'] = pd.to_datetime(counts_df['date'])
     counts_pivot = counts_df.pivot_table(index='date', columns=grouping_col, values='count', aggfunc='sum', fill_value=0).sort_index()  #ignores rows with nan values in grouping col (same values are nan for pango lineage and clade)
-    if grouping_col == 'nextstrainClade':
+    if grouping_col == 'nextstrainClade' and 'recombinant' in counts_pivot.columns:
         counts_pivot = counts_pivot.drop('recombinant', axis = 1)
     counts_matrix = counts_pivot.to_numpy()
 

@@ -155,8 +155,15 @@ def calculate_raw_frequencies(csv_path, grouping_col):
     df = pd.read_csv(csv_path)
     df["date"] = pd.to_datetime(df["date"])
     df_counts = df.groupby(["date", grouping_col])["count"].sum().unstack(fill_value=0)
-    df_freqs = df_counts.div(df_counts.sum(axis=1), axis=0)
-    return df_freqs
+
+    # Calculate daily raw frequencies
+    df_daily_freqs = df_counts.div(df_counts.sum(axis=1), axis=0)
+
+    # Calculate weekly raw frequencies (7-day rolling mean)
+    df_weekly_freqs = df_counts.rolling(window=7, min_periods=1).sum()
+    df_weekly_freqs = df_weekly_freqs.div(df_weekly_freqs.sum(axis=1), axis=0)
+
+    return df_daily_freqs, df_weekly_freqs
 
 
 def to_nextstrain_format(
@@ -165,6 +172,8 @@ def to_nextstrain_format(
     frequencies,
     growth_rates,
     raw_frequencies,
+    weekly_raw_frequencies,
+    std_errors,
     locations=None,
     pivot_variant=None,
     variant_display_names=None,
@@ -180,19 +189,30 @@ def to_nextstrain_format(
         updated = pd.to_datetime("today").strftime("%Y-%m-%d")
 
     metadata = {
-        "ps": ["median"],
-        "sites": ["freq", "ga", "daily_raw_freq"],
+        "ps": ["median", "HDI_50_upper", "HDI_50_lower", "HDI_80_upper", "HDI_80_lower", "HDI_95_upper", "HDI_95_lower"],
+        "sites": ["freq", "ga", "daily_raw_freq", "weekly_raw_freq"],
         "location": locations,
         "dates": [date.strftime("%Y-%m-%d") for date in dates],
         "variants": variant_names.tolist(),
         "variantDisplayNames": variant_display_names,
-        "pivot": pivot_variant,
+        "pivot": pivot_variant or (variant_names[0] if len(variant_names) > 0 else None),
         "updated": updated,
+        "forecast_dates": [date.strftime("%Y-%m-%d") for date in dates][-7:],  # Last 7 dates as forecast dates as an example
+        "variantColors": {name: f"#{hash(name) % 0xFFFFFF:06x}" for name in variant_names},  # Generate simple colors for each variant
     }
+
+    n_variants = len(variant_names)
+    # The first variant is the pivot, so its std errors are 0
+    growth_rate_std_errors_full = np.zeros(n_variants)
+    log_init_freq_std_errors_full = np.zeros(n_variants)
+
+    growth_rate_std_errors_full[1:] = std_errors[:n_variants - 1]
+    log_init_freq_std_errors_full[1:] = std_errors[n_variants - 1:]
 
     data = []
     for location in locations:
         for i, variant in enumerate(variant_names):
+            # Frequencies
             for j, date in enumerate(dates):
                 data.append({
                     "location": location,
@@ -202,6 +222,17 @@ def to_nextstrain_format(
                     "value": frequencies[j, i],
                     "ps": "median",
                 })
+                for ps_key in ["HDI_50_upper", "HDI_50_lower", "HDI_80_upper", "HDI_80_lower", "HDI_95_upper", "HDI_95_lower"]:
+                    data.append({
+                        "location": location,
+                        "site": "freq",
+                        "variant": variant,
+                        "date": date.strftime("%Y-%m-%d"),
+                        "value": None,
+                        "ps": ps_key,
+                    })
+
+            # Growth Advantage
             data.append({
                 "location": location,
                 "site": "ga",
@@ -210,6 +241,26 @@ def to_nextstrain_format(
                 "value": np.exp(growth_rates[i]),
                 "ps": "median",
             })
+            # HDI for growth advantage (assuming normal distribution of growth_rate)
+            for hdi_level, multiplier in [(0.5, 0.67), (0.8, 1.28), (0.95, 1.96)]:
+                lower_bound = np.exp(growth_rates[i] - multiplier * growth_rate_std_errors_full[i])
+                upper_bound = np.exp(growth_rates[i] + multiplier * growth_rate_std_errors_full[i])
+                data.append({
+                    "location": location,
+                    "site": "ga",
+                    "variant": variant,
+                    "date": dates[-1].strftime("%Y-%m-%d"),
+                    "value": lower_bound,
+                    "ps": f"HDI_{int(hdi_level*100)}_lower",
+                })
+                data.append({
+                    "location": location,
+                    "site": "ga",
+                    "variant": variant,
+                    "date": dates[-1].strftime("%Y-%m-%d"),
+                    "value": upper_bound,
+                    "ps": f"HDI_{int(hdi_level*100)}_upper",
+                })
         for date, row in raw_frequencies.iterrows():
             for variant in raw_frequencies.columns:
                 data.append({
@@ -220,6 +271,34 @@ def to_nextstrain_format(
                     "value": row[variant],
                     "ps": "median",
                 })
+                for ps_key in ["HDI_50_upper", "HDI_50_lower", "HDI_80_upper", "HDI_80_lower", "HDI_95_upper", "HDI_95_lower"]:
+                    data.append({
+                        "location": location,
+                        "site": "daily_raw_freq",
+                        "variant": variant,
+                        "date": date.strftime("%Y-%m-%d"),
+                        "value": None,
+                        "ps": ps_key,
+                    })
+        for date, row in weekly_raw_frequencies.iterrows():
+            for variant in weekly_raw_frequencies.columns:
+                data.append({
+                    "location": location,
+                    "site": "weekly_raw_freq",
+                    "variant": variant,
+                    "date": date.strftime("%Y-%m-%d"),
+                    "value": row[variant],
+                    "ps": "median",
+                })
+                for ps_key in ["HDI_50_upper", "HDI_50_lower", "HDI_80_upper", "HDI_80_lower", "HDI_95_upper", "HDI_95_lower"]:
+                    data.append({
+                        "location": location,
+                        "site": "weekly_raw_freq",
+                        "variant": variant,
+                        "date": date.strftime("%Y-%m-%d"),
+                        "value": None,
+                        "ps": ps_key,
+                    })
 
 
     return {"metadata": metadata, "data": data}
@@ -251,13 +330,15 @@ def main() -> None:
     results = estimator.get_results()
 
     if args.output_format == "nextstrain":
-        raw_frequencies = calculate_raw_frequencies(args.input_csv, args.grouping_column)
+        df_daily_freqs, df_weekly_freqs = calculate_raw_frequencies(args.input_csv, args.grouping_column)
         nextstrain_json = to_nextstrain_format(
             variant_names=data["variant_names"],
             dates=data["counts_df_pivot"].index.to_pydatetime(),
             frequencies=results["composition_estimate"],
             growth_rates=results["growth_rate_estimate"],
-            raw_frequencies=raw_frequencies,
+            raw_frequencies=df_daily_freqs,
+            weekly_raw_frequencies=df_weekly_freqs,
+            std_errors=results["std_errors"],
             pivot_variant=args.pivot_variant,
         )
         output_path = Path(args.output)

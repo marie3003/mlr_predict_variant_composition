@@ -80,12 +80,14 @@ class BaseCompositionEstimator(ABC):
 
 
     def get_results(self):
+        std_errors = np.sqrt(np.diag(self.hess_inv))
         return {
             'growth_rate_estimate': self.growth_rate_estimate,
             'log_init_freq_estimate': self.log_init_freq_estimate,
             'composition_estimate': self.composition_estimate,
             'hessian': self.hessian,
             'hess_inv': self.hess_inv,
+            'std_errors': std_errors,
         }
     
 class BFGSCompositionEstimator(BaseCompositionEstimator):
