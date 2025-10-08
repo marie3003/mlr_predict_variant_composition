@@ -178,6 +178,8 @@ def to_nextstrain_format(
     pivot_variant=None,
     variant_display_names=None,
     updated=None,
+    csv_path=None,
+    grouping_col=None,
 ):
     if locations is None:
         locations = ["default"]
@@ -214,23 +216,95 @@ def to_nextstrain_format(
         for i, variant in enumerate(variant_names):
             # Frequencies
             for j, date in enumerate(dates):
+                # Calculate frequency confidence intervals using parameter standard errors
+                # Use the delta method approximation: if f = exp(a*t + b) / sum(exp(a*t + b)), then 
+                # the derivative can be approximated using the parameter standard errors
+                freq_value = frequencies[j, i]
+                
+                # For frequency confidence intervals, we'll use a simplified approach
+                # based on the log_init_freq std errors
+                freq_se = 0
+                if i < len(log_init_freq_std_errors_full):  # Make sure we don't go out of bounds
+                    # Calculate the standard error for the frequency using the parameter SEs
+                    # This is a simplified approach using the std error of the initial log frequency
+                    # For more accuracy, we would need to compute the full Jacobian and apply the delta method
+                    freq_se = log_init_freq_std_errors_full[i] * freq_value  # Approximation
+                    t = j  # Current time point (starting from 0)
+                    
+                    # Calculate growth contribution to variance
+                    if i < len(growth_rate_std_errors_full):
+                        growth_se_contrib = growth_rate_std_errors_full[i] * t * freq_value * (1 - freq_value)  # More appropriate formula
+                        freq_se = np.sqrt(freq_se**2 + growth_se_contrib**2)  # Combined standard error
+                else:
+                    freq_se = 0  # For safety
+
+                # Calculate confidence intervals - add small epsilon to avoid zero-width intervals
+                if freq_se == 0:
+                    freq_se = 1e-6  # Small value to ensure we have some CI
+
+                freq_lower_50 = max(0, freq_value - 0.67 * freq_se)
+                freq_upper_50 = min(1, freq_value + 0.67 * freq_se)
+                freq_lower_80 = max(0, freq_value - 1.28 * freq_se)
+                freq_upper_80 = min(1, freq_value + 1.28 * freq_se)
+                freq_lower_95 = max(0, freq_value - 1.96 * freq_se)
+                freq_upper_95 = min(1, freq_value + 1.96 * freq_se)
+
                 data.append({
                     "location": location,
                     "site": "freq",
                     "variant": variant,
                     "date": date.strftime("%Y-%m-%d"),
-                    "value": frequencies[j, i],
+                    "value": freq_value,
                     "ps": "median",
                 })
-                for ps_key in ["HDI_50_upper", "HDI_50_lower", "HDI_80_upper", "HDI_80_lower", "HDI_95_upper", "HDI_95_lower"]:
-                    data.append({
-                        "location": location,
-                        "site": "freq",
-                        "variant": variant,
-                        "date": date.strftime("%Y-%m-%d"),
-                        "value": None,
-                        "ps": ps_key,
-                    })
+                data.append({
+                    "location": location,
+                    "site": "freq",
+                    "variant": variant,
+                    "date": date.strftime("%Y-%m-%d"),
+                    "value": freq_lower_50,
+                    "ps": "HDI_50_lower",
+                })
+                data.append({
+                    "location": location,
+                    "site": "freq",
+                    "variant": variant,
+                    "date": date.strftime("%Y-%m-%d"),
+                    "value": freq_upper_50,
+                    "ps": "HDI_50_upper",
+                })
+                data.append({
+                    "location": location,
+                    "site": "freq",
+                    "variant": variant,
+                    "date": date.strftime("%Y-%m-%d"),
+                    "value": freq_lower_80,
+                    "ps": "HDI_80_lower",
+                })
+                data.append({
+                    "location": location,
+                    "site": "freq",
+                    "variant": variant,
+                    "date": date.strftime("%Y-%m-%d"),
+                    "value": freq_upper_80,
+                    "ps": "HDI_80_upper",
+                })
+                data.append({
+                    "location": location,
+                    "site": "freq",
+                    "variant": variant,
+                    "date": date.strftime("%Y-%m-%d"),
+                    "value": freq_lower_95,
+                    "ps": "HDI_95_lower",
+                })
+                data.append({
+                    "location": location,
+                    "site": "freq",
+                    "variant": variant,
+                    "date": date.strftime("%Y-%m-%d"),
+                    "value": freq_upper_95,
+                    "ps": "HDI_95_upper",
+                })
 
             # Growth Advantage
             data.append({
@@ -261,44 +335,36 @@ def to_nextstrain_format(
                     "value": upper_bound,
                     "ps": f"HDI_{int(hdi_level*100)}_upper",
                 })
+        # Process daily raw frequencies (empirical frequencies from raw counts)
+        # These should follow the real Nextstrain format without ps field
+        df_counts = pd.read_csv(csv_path)
+        df_counts["date"] = pd.to_datetime(df_counts["date"])
+        df_counts_pivot = df_counts.groupby(["date", grouping_col])["count"].sum().unstack(fill_value=0)
+        
         for date, row in raw_frequencies.iterrows():
             for variant in raw_frequencies.columns:
+                raw_freq_value = row[variant]
+                
                 data.append({
                     "location": location,
                     "site": "daily_raw_freq",
                     "variant": variant,
                     "date": date.strftime("%Y-%m-%d"),
-                    "value": row[variant],
-                    "ps": "median",
+                    "value": raw_freq_value,
                 })
-                for ps_key in ["HDI_50_upper", "HDI_50_lower", "HDI_80_upper", "HDI_80_lower", "HDI_95_upper", "HDI_95_lower"]:
-                    data.append({
-                        "location": location,
-                        "site": "daily_raw_freq",
-                        "variant": variant,
-                        "date": date.strftime("%Y-%m-%d"),
-                        "value": None,
-                        "ps": ps_key,
-                    })
+
+        # Process weekly raw frequencies (empirical frequencies from raw counts)
         for date, row in weekly_raw_frequencies.iterrows():
             for variant in weekly_raw_frequencies.columns:
+                raw_freq_value = row[variant]
+                
                 data.append({
                     "location": location,
                     "site": "weekly_raw_freq",
                     "variant": variant,
                     "date": date.strftime("%Y-%m-%d"),
-                    "value": row[variant],
-                    "ps": "median",
+                    "value": raw_freq_value,
                 })
-                for ps_key in ["HDI_50_upper", "HDI_50_lower", "HDI_80_upper", "HDI_80_lower", "HDI_95_upper", "HDI_95_lower"]:
-                    data.append({
-                        "location": location,
-                        "site": "weekly_raw_freq",
-                        "variant": variant,
-                        "date": date.strftime("%Y-%m-%d"),
-                        "value": None,
-                        "ps": ps_key,
-                    })
 
 
     return {"metadata": metadata, "data": data}
@@ -340,6 +406,8 @@ def main() -> None:
             weekly_raw_frequencies=df_weekly_freqs,
             std_errors=results["std_errors"],
             pivot_variant=args.pivot_variant,
+            csv_path=args.input_csv,
+            grouping_col=args.grouping_column,
         )
         output_path = Path(args.output)
         write_json(output_path, nextstrain_json)
