@@ -14,7 +14,7 @@ from viral_variant_comp.estimate import (
     StepwiseBFGSCompositionEstimator,
     choose_pivot_variant,
 )
-from viral_variant_comp.simulate_count_data import preprocess_covid_data
+from viral_variant_comp.simulate_count_data import preprocess_covid_data, calculate_frequencies
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -175,6 +175,45 @@ def calculate_raw_frequencies(df: pd.DataFrame, grouping_col: str):
     return df_daily_freqs, df_weekly_freqs
 
 
+def sample_frequencies(growth_rates, log_init_freq, hess_inv, n_days, n_samples=1000):
+    """
+    Samples frequencies from the posterior distribution of the parameters in a vectorized way.
+    """
+    n_variants = len(growth_rates)
+    params = np.concatenate([growth_rates[1:], log_init_freq[1:]])
+
+    # Sample from the multivariate normal distribution
+    samples = np.random.multivariate_normal(params, hess_inv, size=n_samples)
+
+    # Separate the samples into growth rates and log initial frequencies
+    s_samples = np.insert(samples[:, :n_variants-1], 0, 0.0, axis=1)
+    o_samples = np.insert(samples[:, n_variants-1:], 0, 0.0, axis=1)
+
+    # Calculate the logits for all samples at once
+    t_vec = np.arange(n_days)
+    logits = np.einsum('t,sv->tsv', t_vec, s_samples) + o_samples[np.newaxis, :, :]
+
+    # Calculate the frequencies
+    max_logits = np.max(logits, axis=2, keepdims=True)
+    shifted_exp_logits = np.exp(logits - max_logits)
+    sum_shifted_exp_logits = np.sum(shifted_exp_logits, axis=2, keepdims=True)
+    freq_samples = shifted_exp_logits / sum_shifted_exp_logits
+
+    return np.transpose(freq_samples, (1, 0, 2))
+
+def calculate_hpdi(samples, hdi_level):
+    """
+    Calculates the highest posterior density interval (HPDI) from samples.
+    """
+    sorted_samples = np.sort(samples)
+    n_samples = len(sorted_samples)
+    n_in_interval = int(np.floor(hdi_level * n_samples))
+    interval_width = sorted_samples[n_in_interval:] - sorted_samples[:n_samples - n_in_interval]
+    min_width_index = np.argmin(interval_width)
+    lower_bound = sorted_samples[min_width_index]
+    upper_bound = sorted_samples[min_width_index + n_in_interval]
+    return lower_bound, upper_bound
+
 def generate_nextstrain_data_entries(
     location,
     variant_names,
@@ -184,37 +223,34 @@ def generate_nextstrain_data_entries(
     raw_frequencies,
     weekly_raw_frequencies,
     std_errors,
+    hess_inv,
+    log_init_freq_estimate,
 ):
+    print(f'Creating visualization for {location}.')
     data = []
     n_variants = len(variant_names)
+    n_days = len(dates)
     growth_rate_std_errors_full = np.zeros(n_variants)
     log_init_freq_std_errors_full = np.zeros(n_variants)
 
     growth_rate_std_errors_full[1:] = std_errors[:n_variants - 1]
     log_init_freq_std_errors_full[1:] = std_errors[n_variants - 1:]
 
+    # Sample frequencies
+    freq_samples = sample_frequencies(growth_rates, log_init_freq_estimate, hess_inv, n_days, n_samples=1000)
+
+    growth_advantage = np.exp(growth_rates)
+    ga_std_error = growth_advantage * growth_rate_std_errors_full
+
     for i, variant in enumerate(variant_names):
         for j, date in enumerate(dates):
             freq_value = frequencies[j, i]
-            freq_se = 0
-            if i < len(log_init_freq_std_errors_full):
-                freq_se = log_init_freq_std_errors_full[i] * freq_value
-                t = j
-                if i < len(growth_rate_std_errors_full):
-                    growth_se_contrib = growth_rate_std_errors_full[i] * t * freq_value * (1 - freq_value)
-                    freq_se = np.sqrt(freq_se**2 + growth_se_contrib**2)
-            else:
-                freq_se = 0
-
-            if freq_se == 0:
-                freq_se = 1e-6
-
-            freq_lower_50 = np.clip(freq_value - 0.67 * freq_se, 0, 1)
-            freq_upper_50 = np.clip(freq_value + 0.67 * freq_se, 0, 1)
-            freq_lower_80 = np.clip(freq_value - 1.28 * freq_se, 0, 1)
-            freq_upper_80 = np.clip(freq_value + 1.28 * freq_se, 0, 1)
-            freq_lower_95 = np.clip(freq_value - 1.96 * freq_se, 0, 1)
-            freq_upper_95 = np.clip(freq_value + 1.96 * freq_se, 0, 1)
+            
+            # Calculate HPDI for frequency
+            freq_samples_variant_date = freq_samples[:, j, i]
+            freq_lower_50, freq_upper_50 = calculate_hpdi(freq_samples_variant_date, 0.5)
+            freq_lower_80, freq_upper_80 = calculate_hpdi(freq_samples_variant_date, 0.8)
+            freq_lower_95, freq_upper_95 = calculate_hpdi(freq_samples_variant_date, 0.95)
 
             data.append({"location": location, "site": "freq", "variant": variant, "date": date.strftime("%Y-%m-%d"), "value": freq_value, "ps": "median"})
             data.append({"location": location, "site": "freq", "variant": variant, "date": date.strftime("%Y-%m-%d"), "value": freq_lower_50, "ps": "HDI_50_lower"})
@@ -224,16 +260,22 @@ def generate_nextstrain_data_entries(
             data.append({"location": location, "site": "freq", "variant": variant, "date": date.strftime("%Y-%m-%d"), "value": freq_lower_95, "ps": "HDI_95_lower"})
             data.append({"location": location, "site": "freq", "variant": variant, "date": date.strftime("%Y-%m-%d"), "value": freq_upper_95, "ps": "HDI_95_upper"})
 
-        data.append({"location": location, "site": "ga", "variant": variant, "date": dates[-1].strftime("%Y-%m-%d"), "value": np.exp(growth_rates[i]), "ps": "median"})
-        for hdi_level, multiplier in [(0.5, 0.67), (0.8, 1.28), (0.95, 1.96)]:
-            lower_log_val = growth_rates[i] - multiplier * growth_rate_std_errors_full[i]
-            upper_log_val = growth_rates[i] + multiplier * growth_rate_std_errors_full[i]
-            lower_log_val = np.clip(lower_log_val, -700, 700)
-            upper_log_val = np.clip(upper_log_val, -700, 700)
-            lower_bound = np.exp(lower_log_val)
-            upper_bound = np.exp(upper_log_val)
-            data.append({"location": location, "site": "ga", "variant": variant, "date": dates[-1].strftime("%Y-%m-%d"), "value": lower_bound, "ps": f"HDI_{int(hdi_level*100)}_lower"})
-            data.append({"location": location, "site": "ga", "variant": variant, "date": dates[-1].strftime("%Y-%m-%d"), "value": upper_bound, "ps": f"HDI_{int(hdi_level*100)}_upper"})
+        if i == 0:  # Pivot variant
+            data.append({"location": location, "site": "ga", "variant": variant, "date": dates[-1].strftime("%Y-%m-%d"), "value": 1.0, "ps": "median"})
+            for hdi_level in [50, 80, 95]:
+                data.append({"location": location, "site": "ga", "variant": variant, "date": dates[-1].strftime("%Y-%m-%d"), "value": 1.0, "ps": f"HDI_{hdi_level}_lower"})
+                data.append({"location": location, "site": "ga", "variant": variant, "date": dates[-1].strftime("%Y-%m-%d"), "value": 1.0, "ps": f"HDI_{hdi_level}_upper"})
+        else:
+            data.append({"location": location, "site": "ga", "variant": variant, "date": dates[-1].strftime("%Y-%m-%d"), "value": growth_advantage[i], "ps": "median"})  
+            for hdi_level, multiplier in [(0.5, 0.67), (0.8, 1.28), (0.95, 1.96)]:
+                lower_bound = growth_advantage[i] - multiplier * ga_std_error[i]
+                upper_bound = growth_advantage[i] + multiplier * ga_std_error[i]
+
+                lower_bound = np.clip(lower_bound, 0, 5)
+                upper_bound = np.clip(upper_bound, 0, 5)
+
+                data.append({"location": location, "site": "ga", "variant": variant, "date": dates[-1].strftime("%Y-%m-%d"), "value": lower_bound, "ps": f"HDI_{int(hdi_level*100)}_lower"})
+                data.append({"location": location, "site": "ga", "variant": variant, "date": dates[-1].strftime("%Y-%m-%d"), "value": upper_bound, "ps": f"HDI_{int(hdi_level*100)}_upper"})
 
     for date, row in raw_frequencies.iterrows():
         for variant in raw_frequencies.columns:
@@ -419,15 +461,18 @@ def visualize_command(args):
             dates=dates,
             frequencies=res["composition_estimate"],
             growth_rates=res["growth_rate_estimate"],
+            log_init_freq_estimate=res["log_init_freq_estimate"],
             raw_frequencies=df_daily_freqs,
             weekly_raw_frequencies=df_weekly_freqs,
             std_errors=res["std_errors"],
+            hess_inv=res["hess_inv"],
         )
 
         final_data_entries.extend(location_data_entries)
 
     updated = pd.to_datetime("today").strftime("%Y-%m-%d")
     first_loc_key = next(iter(location_results.keys()))
+    # TODO: chooses pivot of first location as pivot, if different countries have different variants might make no sense, not sure if there is an option to choose different pivots
     pivot_variant = location_results[first_loc_key].get("pivot_variant", None)
 
     sorted_variants = sorted(list(all_variants))
