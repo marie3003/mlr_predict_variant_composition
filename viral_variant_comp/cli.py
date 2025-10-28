@@ -201,18 +201,29 @@ def sample_frequencies(growth_rates, log_init_freq, hess_inv, n_days, n_samples=
 
     return np.transpose(freq_samples, (1, 0, 2))
 
-def calculate_hpdi(samples, hdi_level):
+def calculate_hpdi_vectorized(samples, hdi_level):
     """
-    Calculates the highest posterior density interval (HPDI) from samples.
+    Calculates the highest posterior density interval (HPDI) from samples in a vectorized way.
+    `samples` has shape (n_samples, n_combinations), where n_combinations is n_days * n_variants.
     """
-    sorted_samples = np.sort(samples)
-    n_samples = len(sorted_samples)
+    # Sort the samples along the first axis
+    sorted_samples = np.sort(samples, axis=0)
+    n_samples = samples.shape[0]
+
+    # Calculate the number of samples in the interval
     n_in_interval = int(np.floor(hdi_level * n_samples))
-    interval_width = sorted_samples[n_in_interval:] - sorted_samples[:n_samples - n_in_interval]
-    min_width_index = np.argmin(interval_width)
-    lower_bound = sorted_samples[min_width_index]
-    upper_bound = sorted_samples[min_width_index + n_in_interval]
-    return lower_bound, upper_bound
+
+    # Calculate the interval widths
+    interval_widths = sorted_samples[n_in_interval:] - sorted_samples[:n_samples - n_in_interval]
+
+    # Find the index of the minimum width for each combination
+    min_width_indices = np.argmin(interval_widths, axis=0)
+
+    # Get the lower and upper bounds
+    lower_bounds = sorted_samples[min_width_indices, np.arange(samples.shape[1])]
+    upper_bounds = sorted_samples[min_width_indices + n_in_interval, np.arange(samples.shape[1])]
+
+    return lower_bounds, upper_bounds
 
 def generate_nextstrain_data_entries(
     location,
@@ -225,8 +236,8 @@ def generate_nextstrain_data_entries(
     std_errors,
     hess_inv,
     log_init_freq_estimate,
-):
-    print(f'Creating visualization for {location}.')
+):  
+    print(f"Creating visualization for {location}.")
     data = []
     n_variants = len(variant_names)
     n_days = len(dates)
@@ -239,6 +250,20 @@ def generate_nextstrain_data_entries(
     # Sample frequencies
     freq_samples = sample_frequencies(growth_rates, log_init_freq_estimate, hess_inv, n_days, n_samples=1000)
 
+    # Reshape for vectorized HPDI calculation
+    n_samples, n_days, n_variants = freq_samples.shape
+    freq_samples_reshaped = freq_samples.reshape(n_samples, n_days * n_variants)
+
+    # Calculate HPDIs for all combinations at once
+    hdi_levels = [0.5, 0.8, 0.95]
+    hpdi_results = {}
+    for hdi_level in hdi_levels:
+        lower, upper = calculate_hpdi_vectorized(freq_samples_reshaped, hdi_level)
+        hpdi_results[hdi_level] = {
+            "lower": lower.reshape(n_days, n_variants),
+            "upper": upper.reshape(n_days, n_variants)
+        }
+
     growth_advantage = np.exp(growth_rates)
     ga_std_error = growth_advantage * growth_rate_std_errors_full
 
@@ -246,11 +271,12 @@ def generate_nextstrain_data_entries(
         for j, date in enumerate(dates):
             freq_value = frequencies[j, i]
             
-            # Calculate HPDI for frequency
-            freq_samples_variant_date = freq_samples[:, j, i]
-            freq_lower_50, freq_upper_50 = calculate_hpdi(freq_samples_variant_date, 0.5)
-            freq_lower_80, freq_upper_80 = calculate_hpdi(freq_samples_variant_date, 0.8)
-            freq_lower_95, freq_upper_95 = calculate_hpdi(freq_samples_variant_date, 0.95)
+            freq_lower_50 = hpdi_results[0.5]["lower"][j, i]
+            freq_upper_50 = hpdi_results[0.5]["upper"][j, i]
+            freq_lower_80 = hpdi_results[0.8]["lower"][j, i]
+            freq_upper_80 = hpdi_results[0.8]["upper"][j, i]
+            freq_lower_95 = hpdi_results[0.95]["lower"][j, i]
+            freq_upper_95 = hpdi_results[0.95]["upper"][j, i]
 
             data.append({"location": location, "site": "freq", "variant": variant, "date": date.strftime("%Y-%m-%d"), "value": freq_value, "ps": "median"})
             data.append({"location": location, "site": "freq", "variant": variant, "date": date.strftime("%Y-%m-%d"), "value": freq_lower_50, "ps": "HDI_50_lower"})
