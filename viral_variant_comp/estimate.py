@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+import copy
 
 from viral_variant_comp.simulate_count_data import calculate_frequencies, reorder_variants, create_count_data
 
@@ -153,7 +154,7 @@ class StepwiseBFGSCompositionEstimator(BaseCompositionEstimator):
         s_1 and o_1 need to be fixed to 0 to find one optimal solution. 
 
         params: array od shape (2n,) where first n are s_i and last n o_i
-        c_t: array of shape (T+1, n), where c_t[t, i] = c_i^(t)
+        c_t: counts array of shape (T+1, n), where c_t[t, i] = c_i^(t)
         fixed_params: parameter vector containing the parameters that are fixed (first to mth variant)
         """
 
@@ -196,9 +197,16 @@ class StepwiseBFGSCompositionEstimator(BaseCompositionEstimator):
 
         Afterwards, these parameter estimates are used to calculate viral frequencies for each observed time point.
         """
+        # TODO: make code work if n_variants < partition_size and overlap_size
+
+        if self.partition_size <= self.overlap_size:
+            raise ValueError("partition_size must be > overlap_size")
 
         step_size = self.partition_size - self.overlap_size
-        n_partitions = int(1 + np.ceil((self.n_variants - self.partition_size) / step_size))
+        if self.n_variants < self.partition_size:
+            n_partitions = 1
+        else:
+            n_partitions = int(1 + np.ceil((self.n_variants - self.partition_size) / step_size))
 
         s_vec = np.zeros(self.n_variants)
         o_vec = np.zeros(self.n_variants)
@@ -217,7 +225,8 @@ class StepwiseBFGSCompositionEstimator(BaseCompositionEstimator):
 
             # initial params are chosen to be the estimates from the previous estimation combined with their mean for the next values where no initial guess exists
             if (i == 0):
-                initial_params = calculate_inital_params(self.partition_size)
+                n_new_initial_param = min(self.n_variants, self.partition_size)
+                initial_params = calculate_inital_params(n_new_initial_param)
             else:
                 n_new_initial_param = interval_end - interval_start - len(s_new_initial_params)
                 initial_params = np.concatenate([s_new_initial_params, np.repeat(np.mean(s_new_initial_params), n_new_initial_param), o_new_initial_params, np.repeat(np.mean(o_new_initial_params), n_new_initial_param)])
@@ -240,6 +249,7 @@ class StepwiseBFGSCompositionEstimator(BaseCompositionEstimator):
             s_new_initial_params = s_estimate[-self.overlap_size:]
             o_new_initial_params = o_estimate[-self.overlap_size:]
 
+        # add second half of parameters from last window
         n_remaining_param = len(s_estimate) - self.overlap_size
         if(n_remaining_param > 0):
             s_vec[- n_remaining_param:] = s_estimate[- n_remaining_param:]
@@ -262,13 +272,12 @@ def calculate_cooccurence(counts):
     co_occurrence_matrix = np.matmul(presence.T, presence)
     return co_occurrence_matrix
 
-import numpy as np
-import copy
 
 def choose_pivot_variant(data_pango, pivot):  # e.g. pivot = 'A'
 
     data_pango_copy = copy.deepcopy(data_pango)
-
+    
+    assert(pivot != None)
 
     idx_pivot = np.where(data_pango_copy['variant_names'] == pivot)[0][0]
 

@@ -109,6 +109,10 @@ def create_count_data(n_variants, delta_gr_range, new_var_rate, freq_entering_va
 ### PREPROCESSING EVOFR
 
 def convert_count_data_to_df(counts):
+    try:
+        import pandas as pd  # pylint: disable=import-error
+    except ImportError as exc:
+        raise RuntimeError("Pandas is required for convert_count_data_to_df.") from exc
     # Convert to DataFrame with column names as variants
     counts_df = pd.DataFrame(counts, columns=[f"variant_{i}" for i in range(counts.shape[1])])
     counts_df["day"] = counts_df.index
@@ -119,7 +123,10 @@ def convert_count_data_to_df(counts):
     return counts_df_long
 
 def prepare_count_data_evofr(counts):
-
+    try:
+        import pandas as pd  # pylint: disable=import-error
+    except ImportError as exc:
+        raise RuntimeError("Pandas is required for prepare_count_data_evofr.") from exc
     counts_df = convert_count_data_to_df(counts)
     
     start_date = pd.to_datetime("2025-01-01")
@@ -148,13 +155,51 @@ def reorder_variants_realdata(counts, var_names):
     
     return counts, var_names, t_peaks
 
-def preprocess_covid_data(counts_df, grouping_col = 'nextstrainClade'):
+def preprocess_covid_data(counts_df, grouping_col='nextstrainClade'):
+    
+    counts_df = counts_df.copy()
     counts_df['date'] = pd.to_datetime(counts_df['date'])
-    counts_pivot = counts_df.pivot_table(index='date', columns=grouping_col, values='count', aggfunc='sum', fill_value=0).sort_index()  #ignores rows with nan values in grouping col (same values are nan for pango lineage and clade)
+
+    # aggregate counts per day × variant (pivot), fill missing combos with 0
+    counts_pivot = (
+        counts_df
+        .pivot_table(
+            index='date',
+            columns=grouping_col,
+            values='count',
+            aggfunc='sum',
+            fill_value=0
+        )
+        .sort_index()
+    )
+
+    # drop recombinant if we're grouping by nextstrain clade
     if grouping_col == 'nextstrainClade' and 'recombinant' in counts_pivot.columns:
-        counts_pivot = counts_pivot.drop('recombinant', axis = 1)
+        counts_pivot = counts_pivot.drop('recombinant', axis=1)
+
+    # reindex to continuous daily range from first to last date
+    if len(counts_pivot.index) > 0:
+        full_index = pd.date_range(
+            start=counts_pivot.index.min(),
+            end=counts_pivot.index.max(),
+            freq='D'
+        )
+        counts_pivot = counts_pivot.reindex(full_index, fill_value=0)
+
+    # convert to numpy matrix
     counts_matrix = counts_pivot.to_numpy()
 
-    counts_matrix, var_names, t_peaks = reorder_variants_realdata(counts_matrix, counts_pivot.columns)
-    
-    return {'counts_df': counts_df, 'counts_df_pivot': counts_pivot, 'counts': counts_matrix, 'variant_names': var_names, 'n_variants': counts_matrix.shape[1], 'mean_time': t_peaks}
+    # reorder variants by your logic
+    counts_matrix, var_names, t_peaks = reorder_variants_realdata(
+        counts_matrix,
+        counts_pivot.columns
+    )
+
+    return {
+        'counts_df': counts_df,
+        'counts': counts_matrix,
+        'variant_names': var_names,
+        'n_variants': counts_matrix.shape[1] if counts_matrix.size else 0,
+        'mean_time': t_peaks,
+        'dates': counts_pivot.index,
+    }

@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from viral_variant_comp.estimate import BFGSCompositionEstimator, StepwiseBFGSCompositionEstimator, EvofrCompositionEstimator
+from viral_variant_comp.estimate import BFGSCompositionEstimator, StepwiseBFGSCompositionEstimator
 from viral_variant_comp.simulate_count_data import create_count_data
 from viral_variant_comp.plotting import plot_confidence_intervals_deviation, plot_viral_composition_dual
 
